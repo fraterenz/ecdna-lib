@@ -250,6 +250,44 @@ impl EcDNADistribution {
         lookup
     }
 
+    pub fn drop_nminus(&mut self) {
+        self.nminus = 0;
+    }
+
+    pub fn scale_by(self, c: f32) -> Self {
+        //! Scale (divide) the ecDNA distribution by a constant `c`.
+        //!
+        //! Since the ecDNA copies [`DNACopy`] are integers and, by dividing by
+        //! a float, floats can arise, we round the scaled copies using
+        //! ceil from [`std::f32`].
+        //! ## Panics
+        //! When `c` is smaller or equal than 0, is [`f32::NAN`] or
+        //! [`f32::INFINITY`].
+        if c.is_sign_positive() {
+            assert!(!c.is_nan(), "`c` cannot be NaN");
+            if c.is_finite() {
+                if (c - 0f32).abs() < f32::EPSILON {
+                    panic!("`c` cannot be zero!");
+                } else {
+                    // unchecked because we are using ceil and c cannot be inf.
+                    let nplus = self
+                        .nplus
+                        .into_iter()
+                        .map(|copy| unsafe {
+                            NonZeroU16::new_unchecked((copy.get() as f32 / c).ceil() as u16)
+                        })
+                        .collect();
+                    return EcDNADistribution {
+                        nminus: self.nminus,
+                        nplus,
+                    };
+                }
+            }
+            panic!("`c` cannot be infinite");
+        }
+        panic!("`c` must be greather than 0!")
+    }
+
     pub fn compute_mean(&self) -> f32 {
         //! Returns `f32::NAN` if no cells are present.
         let mean = self.nplus.iter().map(|&ele| ele.get() as u32).sum::<u32>() as f32;
@@ -771,5 +809,56 @@ mod tests {
                 .nplus
                 .iter()
                 .all(|&ele| copies_present.contains(&ele.get()))
+    }
+
+    #[test]
+    #[should_panic]
+    fn scale_by_zero_test() {
+        let distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution.scale_by(0f32);
+    }
+
+    #[test]
+    #[should_panic]
+    fn scale_by_nan_test() {
+        let distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution.scale_by(f32::NAN);
+    }
+
+    #[test]
+    #[should_panic]
+    fn scale_by_inf_test() {
+        let distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution.scale_by(f32::INFINITY);
+    }
+
+    #[test]
+    #[should_panic]
+    fn scale_by_minus_inf_test() {
+        let distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution.scale_by(f32::NEG_INFINITY);
+    }
+
+    #[test]
+    #[should_panic]
+    fn scale_by_neg_test() {
+        let distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution.scale_by(-0f32);
+    }
+
+    #[test]
+    fn scale_by_c_greather_than_1_test() {
+        let mut distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution = distribution.scale_by(2f32);
+        let expected = EcDNADistribution::from(vec![0, 1, 1, 1, 2, 2]);
+        assert_eq!(distribution, expected);
+    }
+
+    #[test]
+    fn scale_by_c_smaller_than_1_test() {
+        let mut distribution = EcDNADistribution::from(vec![0, 1, 1, 2, 3, 4]);
+        distribution = distribution.scale_by(0.5f32);
+        let expected = EcDNADistribution::from(vec![0, 2, 2, 4, 6, 8]);
+        assert_eq!(distribution, expected);
     }
 }
