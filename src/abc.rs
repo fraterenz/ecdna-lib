@@ -1,8 +1,4 @@
-use anyhow::Context;
 use derive_builder::Builder;
-use serde::Serialize;
-use std::fs;
-use std::path::Path;
 
 use crate::distribution::EcDNADistribution;
 
@@ -86,7 +82,7 @@ impl ABCRejection {
     }
 }
 
-#[derive(Builder, Debug, Serialize)]
+#[derive(Builder, Debug)]
 pub struct ABCResult {
     pub idx: usize,
     pub mean: f32,
@@ -100,32 +96,7 @@ pub struct ABCResult {
     pub entropy_stat: Option<f32>,
     #[builder(default)]
     pub ecdna_stat: Option<f32>,
-    pub b0: f32,
-    pub b1: f32,
     pub pop_size: u64,
-}
-
-impl ABCResult {
-    pub fn save(&self, path2folder: &Path, verbosity: u8) -> anyhow::Result<()> {
-        if verbosity > 0 {
-            println!(
-                "Statistics of the run: Mean: {}, Freq: {}, Entropy: {}",
-                self.mean, self.frequency, self.entropy
-            );
-        }
-        fs::create_dir_all(path2folder.join("abc"))
-            .with_context(|| "Cannot create dir abc".to_string())?;
-        let mut abc = path2folder.join("abc").join(self.idx.to_string());
-        abc.set_extension("csv");
-        if verbosity > 1 {
-            println!("Saving ABC results to {:#?}", abc);
-        }
-        let mut wtr = csv::Writer::from_path(abc)?;
-        wtr.serialize(&self)
-            .with_context(|| "Cannot serialize the results from ABC inference".to_string())?;
-        wtr.flush()?;
-        Ok(())
-    }
 }
 
 /// Relative change between two scalars
@@ -142,16 +113,9 @@ mod tests {
     use super::*;
 
     #[quickcheck]
-    fn abc_run_test(
-        distribution: NonEmptyDistribtionWithNPlusCells,
-        idx: usize,
-        b0: f32,
-        b1: f32,
-    ) -> bool {
+    fn abc_run_test(distribution: NonEmptyDistribtionWithNPlusCells, idx: usize) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
-        builder.b0(b0);
-        builder.b1(b1);
         let mean = distribution.0.compute_mean();
         let frequency = distribution.0.compute_frequency();
         let entropy = distribution.0.compute_entropy();
@@ -176,13 +140,9 @@ mod tests {
     fn abc_run_no_distribution_test(
         distribution: NonEmptyDistribtionWithNPlusCells,
         idx: usize,
-        b0: f32,
-        b1: f32,
     ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
-        builder.b0(b0);
-        builder.b1(b1);
         let mean = distribution.0.compute_mean();
         let frequency = distribution.0.compute_frequency();
         let entropy = distribution.0.compute_entropy();
@@ -202,17 +162,14 @@ mod tests {
             && (results.frequency_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
     }
+
     #[quickcheck]
     fn abc_run_distribution_only_test(
         distribution: NonEmptyDistribtionWithNPlusCells,
         idx: usize,
-        b0: f32,
-        b1: f32,
     ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
-        builder.b0(b0);
-        builder.b1(b1);
         let mean = distribution.0.compute_mean();
         let frequency = distribution.0.compute_frequency();
         let entropy = distribution.0.compute_entropy();
