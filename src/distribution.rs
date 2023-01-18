@@ -1,3 +1,4 @@
+use std::cmp::{min, Ord};
 use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
 
 use anyhow::{bail, Context};
@@ -5,8 +6,6 @@ use rand::{seq::SliceRandom, Rng};
 use rand_chacha::ChaCha8Rng;
 
 use crate::DNACopy;
-
-const EPSILON_KS_STAT: f32 = f32::EPSILON * 10f32;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EcDNADistribution {
@@ -171,56 +170,86 @@ impl EcDNADistribution {
         self.nminus = new_distribution.nminus;
     }
 
-    pub fn ks_distance(&self, ecdna: &EcDNADistribution) -> (f32, bool) {
+    pub fn ks_distance(&self, ecdna: &EcDNADistribution) -> f32 {
         //! The ks distance represents the maximal absolute distance between the
         //! empirical cumulative distributions of two `EcDNADistribution`s.
-        //!
-        //! Compute ks distance with `NPlus` and `NMinus` cells, and returns the
-        //! distance as well whether the loop stopped before reaching the maximal
-        //! allowed copy number `u16::MAX`, which is the case when the distance is
-        //! 1 ie maximal, or one of the cumulative distributions have reached 1
-        //! and thus the distance can only decrease monotonically.
-        //!
-        //! Does **not** panic if empty distributions.
-        // do not test small samples because ks is not reliable (ecdf)
-        let ecdna_ntot = ecdna.compute_nplus() + ecdna.nminus;
-        let ntot = self.compute_nplus() + self.nminus;
-        if ntot < 10 || ecdna_ntot < 10 {
-            return (1f32, false);
+        //! ## Panics
+        //! When the distribution are smaller than 7 samples.
+        // Only supports samples of size > 7.
+        assert!(self.nplus.len() > 7 && ecdna.nplus.len() > 7);
+        EcDNADistribution::calculate_statistic(&self.nplus, &ecdna.nplus)
+    }
+
+    fn calculate_statistic<T: Ord + Clone>(xs: &[T], ys: &[T]) -> f32 {
+        // https://github.com/daithiocrualaoich/kolmogorov_smirnov/blob/cb067e92ec837efbad66e8bbcf85500ad778feb8/src/test.rs#L127
+        let n = xs.len();
+        let m = ys.len();
+
+        assert!(n > 0 && m > 0);
+        let mut xs = xs.to_vec();
+        let mut ys = ys.to_vec();
+
+        // xs and ys must be sorted for the stepwise ECDF calculations to work.
+        xs.sort();
+        ys.sort();
+
+        // The current value testing for ECDF difference. Sweeps up through
+        // elements present in xs and ys.
+        let mut current: &T;
+
+        // i, j index the first values in xs and ys that are greater than current.
+        let mut i = 0;
+        let mut j = 0;
+
+        // ecdf_xs, ecdf_ys always hold the ECDF(current) of xs and ys.
+        let mut ecdf_xs = 0.0;
+        let mut ecdf_ys = 0.0;
+
+        // The test statistic value computed over values <= current.
+        let mut statistic = 0.0;
+
+        while i < n && j < m {
+            // Advance i through duplicate samples in xs.
+            let x_i = &xs[i];
+
+            while i + 1 < n && *x_i == xs[i + 1] {
+                i += 1;
+            }
+
+            // Advance j through duplicate samples in ys.
+            let y_j = &ys[j];
+
+            while j + 1 < m && *y_j == ys[j + 1] {
+                j += 1;
+            }
+
+            // Step to the next sample value in the ECDF sweep from low to high.
+            current = min(x_i, y_j);
+
+            // Update invariant conditions for i, j, ecdf_xs, and ecdf_ys.
+            if current == x_i {
+                ecdf_xs = (i + 1) as f32 / n as f32;
+                i += 1;
+            }
+
+            if current == y_j {
+                ecdf_ys = (j + 1) as f32 / m as f32;
+                j += 1;
+            }
+
+            // Update invariant conditions for the test statistic.
+            let diff = (ecdf_xs - ecdf_ys).abs();
+
+            if diff > statistic {
+                statistic = diff;
+            }
         }
 
-        let mut distance = 0f32;
-        // Compare the two empirical cumulative distributions (self) and ecdna
-        let mut ecdf = 0f32;
-        let mut ecdf_other = 0f32;
-        let distribution = self.create_histogram_f32();
-        let distribution_other = ecdna.create_histogram_f32();
-
-        // iter over all ecDNA copies present in both data (self) and ecdna
-        for copy in 0u16..u16::MAX {
-            if let Some(ecdna_copy) = distribution.get(&copy) {
-                ecdf += ecdna_copy / (ntot as f32);
-            }
-            if let Some(ecdna_copy) = distribution_other.get(&copy) {
-                ecdf_other += ecdna_copy / (ecdna_ntot as f32);
-            }
-            // store the maximal distance between the two ecdfs
-            let diff = (ecdf - ecdf_other).abs();
-            if diff - distance >= EPSILON_KS_STAT {
-                distance = diff;
-            }
-            // check if any of the ecdf have reached 1. If it's the case
-            // the difference will decrease monotonically and we can stop
-            let max_dist = (ecdf - 1.0).abs() <= EPSILON_KS_STAT
-                || (ecdf_other - 1.0).abs() <= EPSILON_KS_STAT
-                || (distance - 1.0).abs() <= EPSILON_KS_STAT;
-
-            if max_dist {
-                return (distance, true);
-            }
-        }
-
-        (distance, false)
+        // Don't need to walk the rest of the samples because one of the ecdfs is
+        // already one and the other will be increasing up to one. This means the
+        // difference will be monotonically decreasing, so we have our test
+        // statistic value already.
+        statistic
     }
 
     fn create_histogram(&self) -> HashMap<u16, u64> {
@@ -604,60 +633,93 @@ mod tests {
     }
 
     #[test]
-    fn ecdna_ks_distance_empty() {
+    #[should_panic]
+    fn ecdna_ks_distance_x_empty() {
         let x = EcDNADistribution {
             nplus: vec![],
             nminus: 0,
         };
         let y = EcDNADistribution {
-            nplus: vec![],
+            nplus: vec![NonZeroU16::new(3).unwrap(); 7],
             nminus: 0,
         };
-        assert_eq!(x.ks_distance(&y), (1f32, false));
-        assert_eq!(y.ks_distance(&x), (1f32, false));
-        assert_eq!(x.ks_distance(&x), (1f32, false));
+        x.ks_distance(&y);
     }
 
     #[test]
-
-    fn ecdna_ks_distance_small_samples() {
+    #[should_panic]
+    fn ecdna_ks_distance_y_empty() {
         let x = EcDNADistribution {
-            nplus: vec![NonZeroU16::new(1).unwrap(), NonZeroU16::new(2).unwrap()],
-            nminus: 4,
+            nplus: vec![NonZeroU16::new(3).unwrap(); 7],
+            nminus: 0,
+        };
+        let y = EcDNADistribution {
+            nplus: vec![],
+            nminus: 0,
+        };
+        x.ks_distance(&y);
+    }
+
+    #[test]
+    #[should_panic]
+    fn ecdna_ks_distance_small_sample_y() {
+        let x = EcDNADistribution {
+            nplus: vec![
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(2).unwrap(),
+            ],
+            nminus: 1,
         };
         let y = EcDNADistribution {
             nplus: vec![NonZeroU16::new(1).unwrap(), NonZeroU16::new(2).unwrap()],
-            nminus: 3,
+            nminus: 100,
         };
-        assert_eq!(x.ks_distance(&y), (1f32, false));
-        assert_eq!(y.ks_distance(&x), (1f32, false));
-        assert_eq!(x.ks_distance(&x), (1f32, false));
+        x.ks_distance(&y);
+    }
+
+    #[test]
+    #[should_panic]
+    fn ecdna_ks_distance_small_sample_x() {
+        let x = EcDNADistribution {
+            nplus: vec![NonZeroU16::new(1).unwrap(), NonZeroU16::new(2).unwrap()],
+            nminus: 100,
+        };
+        let y = EcDNADistribution {
+            nplus: vec![
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(1).unwrap(),
+                NonZeroU16::new(2).unwrap(),
+            ],
+            nminus: 100,
+        };
+        x.ks_distance(&y);
     }
 
     #[quickcheck]
     fn ecdna_ks_distance_same_data(x: NonEmptyDistribtionWithNPlusCells) -> bool {
-        let (distance, _) = x.0.ks_distance(&x.0);
-        (distance - 0f32).abs() <= f32::EPSILON
+        (x.0.ks_distance(&x.0) - 0f32).abs() <= f32::EPSILON
     }
 
     #[quickcheck]
-    // #[ignore = "TODO"]
-    fn ecdna_ks_distance_max_copy_number_u16(
-        mut x: NonEmptyDistribtionWithNPlusCells,
-        y: NonEmptyDistribtionWithNPlusCells,
-    ) -> bool {
-        x.0.nplus.push(NonZeroU16::new(u16::MAX).unwrap());
-        let (_, convergence) = x.0.ks_distance(&y.0);
-        convergence
-    }
-
-    #[quickcheck]
-    // #[ignore = "Small error: not exacty 1"]
     fn ecdna_ks_distance_is_one_when_no_overlap_in_support(
         x: NonEmptyDistribtionWithNPlusCells,
     ) -> bool {
         // https://github.com/daithiocrualaoich/kolmogorov_smirnov/blob/master/src/test.rs#L474
         let y_min = x.0.nplus.iter().max().unwrap().get() + 1;
+        dbg!(&y_min);
         let y: EcDNADistribution = EcDNADistribution {
             nminus: 0,
             nplus: x
@@ -667,13 +729,10 @@ mod tests {
                 .map(|ele| NonZeroU16::new(ele.get() + y_min).unwrap())
                 .collect(),
         };
-        let (distance, convergence) = x.0.ks_distance(&y);
-        assert!(x.0.nminus > 0);
-        (distance - 1f32).abs() <= EPSILON_KS_STAT && convergence
+        (x.0.ks_distance(&y) - 1f32).abs() <= f32::EPSILON
     }
 
     #[quickcheck]
-    #[ignore = "Small error: not exacty 0.5"]
     fn ecdna_ks_distance_is_point_five_when_semi_overlap_in_support(
         x: NonEmptyDistribtionWithNPlusCells,
     ) -> bool {
@@ -693,23 +752,7 @@ mod tests {
         let ntot = x.0.compute_nplus() + x.0.nminus;
         assert_eq!(y_ntot, ntot * 2, "{} vs {}", y_ntot, ntot * 2);
 
-        let (distance, convergence) = x.0.ks_distance(&y);
-        (distance - 0.5f32).abs() <= EPSILON_KS_STAT && convergence
-    }
-
-    #[quickcheck]
-    fn ecdna_ks_distance_fast_convergence(
-        x: NonEmptyDistribtionWithNPlusCells,
-        nminus: NonZeroU8,
-    ) -> bool {
-        let y = EcDNADistribution {
-            nminus: nminus.get() as u64,
-            nplus: vec![NonZeroU16::new(1).unwrap(); 100],
-        };
-        let (_, convergence) = x.0.ks_distance(&y);
-        let (_, convergence1) = y.ks_distance(&x.0);
-        assert!(x.0.nplus.len() >= 10, "{} len", x.0.nplus.len());
-        convergence && convergence1
+        (x.0.ks_distance(&y) - 0.5f32).abs() <= f32::EPSILON
     }
 
     #[test]

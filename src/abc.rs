@@ -35,13 +35,7 @@ impl ABCRejection {
         let pop_size = distribution.get_nminus() + distribution.compute_nplus();
         builder.pop_size(pop_size);
         let ecdna_stat = if let Some(target_distribution) = &target.distribution {
-            let (distance, convergence) = target_distribution.ks_distance(distribution);
-            if convergence {
-                Some(distance)
-            } else {
-                println!("DID NOT CONVERGE!");
-                None
-            }
+            Some(target_distribution.ks_distance(distribution))
         } else {
             None
         };
