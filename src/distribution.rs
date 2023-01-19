@@ -174,18 +174,18 @@ impl EcDNADistribution {
         //! The ks distance represents the maximal absolute distance between the
         //! empirical cumulative distributions of two `EcDNADistribution`s.
         //! ## Panics
-        //! When the distribution are smaller than 7 samples.
-        // Only supports samples of size > 7.
-        assert!(self.nplus.len() > 7 && ecdna.nplus.len() > 7);
+        //! When the distributions are smaller than 8 samples.
         EcDNADistribution::calculate_statistic(&self.nplus, &ecdna.nplus)
     }
 
     fn calculate_statistic<T: Ord + Clone>(xs: &[T], ys: &[T]) -> f32 {
         // https://github.com/daithiocrualaoich/kolmogorov_smirnov/blob/cb067e92ec837efbad66e8bbcf85500ad778feb8/src/test.rs#L127
+        assert!(!xs.is_empty());
+        assert!(!ys.is_empty());
         let n = xs.len();
         let m = ys.len();
 
-        assert!(n > 0 && m > 0);
+        assert!(n > 7 && m > 7);
         let mut xs = xs.to_vec();
         let mut ys = ys.to_vec();
 
@@ -532,7 +532,17 @@ mod tests {
             nminus: 0,
             nplus: vec![],
         };
-        assert!(ecdna.compute_nplus() == 0 && ecdna.is_empty());
+        assert_eq!(ecdna.compute_nplus(), 0);
+        assert!(ecdna.is_empty());
+    }
+
+    #[quickcheck]
+    fn compute_nplus_0_cells_with_nminus_test(nminus: NonZeroU8) -> bool {
+        let ecdna = EcDNADistribution {
+            nminus: nminus.get() as u64,
+            nplus: vec![],
+        };
+        ecdna.compute_nplus() == 0 && !ecdna.is_empty()
     }
 
     #[quickcheck]

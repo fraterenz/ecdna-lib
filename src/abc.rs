@@ -34,12 +34,19 @@ impl ABCRejection {
         //! against the `target`.
         let pop_size = distribution.get_nminus() + distribution.compute_nplus();
         builder.pop_size(pop_size);
-        let ecdna_stat = if let Some(target_distribution) = &target.distribution {
-            Some(target_distribution.ks_distance(distribution))
-        } else {
-            None
+        if let Some(target_distribution) = &target.distribution {
+            if target_distribution.compute_nplus() <= 7 || distribution.compute_nplus() <= 7 {
+                if verbosity > 0 {
+                    println!(
+                        "Not enough samples in the distributions: {} and {}",
+                        target_distribution.compute_nplus(),
+                        distribution.compute_nplus()
+                    );
+                }
+            } else {
+                builder.ecdna_stat(Some(target_distribution.ks_distance(distribution)));
+            }
         };
-        builder.ecdna_stat(ecdna_stat);
 
         let mean = distribution.compute_mean();
         builder.mean(mean);
@@ -68,7 +75,7 @@ impl ABCRejection {
         if verbosity > 0 {
             println!(
                 "The stats are: ks:{:#?}, mean: {:#?}, freq: {:#?}, entropy: {:#?}",
-                ecdna_stat, mean_stat, frequency_stat, entropy_stat
+                builder.ecdna_stat, mean_stat, frequency_stat, entropy_stat
             );
         }
 
@@ -105,6 +112,38 @@ mod tests {
     use crate::test_util::NonEmptyDistribtionWithNPlusCells;
 
     use super::*;
+
+    #[quickcheck]
+    fn abc_run_small_sample_with_nminus_target(
+        distribution: NonEmptyDistribtionWithNPlusCells,
+    ) -> bool {
+        let target_distr = EcDNADistribution::from(vec![1, 2, 0]);
+        let mut builder = ABCResultBuilder::default();
+        builder.idx(1);
+        let target = Data {
+            distribution: Some(target_distr),
+            mean: None,
+            frequency: None,
+            entropy: None,
+        };
+        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
+        results.ecdna_stat.is_none()
+    }
+
+    #[quickcheck]
+    fn abc_run_small_sample_with_nminus(target_distr: NonEmptyDistribtionWithNPlusCells) -> bool {
+        let distribution = EcDNADistribution::from(vec![1, 2, 0]);
+        let mut builder = ABCResultBuilder::default();
+        builder.idx(1);
+        let target = Data {
+            distribution: Some(target_distr.0),
+            mean: None,
+            frequency: None,
+            entropy: None,
+        };
+        let results = ABCRejection::run(builder, &distribution, &target, 0);
+        results.ecdna_stat.is_none()
+    }
 
     #[quickcheck]
     fn abc_run_test(distribution: NonEmptyDistribtionWithNPlusCells, idx: usize) -> bool {
@@ -164,12 +203,6 @@ mod tests {
     ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
-        let mean = distribution.0.compute_mean();
-        let frequency = distribution.0.compute_frequency();
-        let entropy = distribution.0.compute_entropy();
-        builder.mean(mean);
-        builder.frequency(frequency);
-        builder.entropy(entropy);
         let target = Data {
             distribution: Some(distribution.0.clone()),
             mean: None,
@@ -177,7 +210,7 @@ mod tests {
             entropy: None,
         };
 
-        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
+        let results = ABCRejection::run(builder, &distribution.0, &target, 2);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && results.mean_stat.is_none()
             && results.frequency_stat.is_none()
