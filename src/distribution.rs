@@ -279,7 +279,18 @@ impl EcDNADistribution {
         lookup
     }
 
+    pub fn drop_cells_with_k_copies(self, k: DNACopy) -> EcDNADistribution {
+        //! Create a new `EcDNADistribution` without cells with `k` copies.
+        //!
+        //! If you want to drop cells with 0 copies, use
+        //! [`EcDNADistribution::drop_nminus`] which doesn't consume self.
+        let nminus = self.nminus;
+        let nplus = self.nplus.into_iter().filter(|&ecdna| ecdna == k).collect();
+        EcDNADistribution { nplus, nminus }
+    }
+
     pub fn drop_nminus(&mut self) {
+        //! Drop all cells without any ecDNA copies (cells with 0 copies).
         self.nminus = 0;
     }
 
