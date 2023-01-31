@@ -285,7 +285,7 @@ impl EcDNADistribution {
         //! If you want to drop cells with 0 copies, use
         //! [`EcDNADistribution::drop_nminus`] which doesn't consume self.
         let nminus = self.nminus;
-        let nplus = self.nplus.into_iter().filter(|&ecdna| ecdna == k).collect();
+        let nplus = self.nplus.into_iter().filter(|&ecdna| ecdna != k).collect();
         EcDNADistribution { nplus, nminus }
     }
 
@@ -924,5 +924,23 @@ mod tests {
         distribution = distribution.scale_by(0.5f32);
         let expected = EcDNADistribution::from(vec![0, 2, 2, 4, 6, 8]);
         assert_eq!(distribution, expected);
+    }
+
+    #[quickcheck]
+    fn test_drop_cells_with_k_copies(distribution: NonEmptyDistribtionWithNPlusCells) -> bool {
+        let k = distribution
+            .0
+            .nplus
+            .choose(&mut rand::thread_rng())
+            .unwrap()
+            .to_owned();
+        let filtered_distr = distribution.0.drop_cells_with_k_copies(k);
+
+        for cell in filtered_distr.nplus {
+            if cell == k {
+                return false;
+            }
+        }
+        true
     }
 }
