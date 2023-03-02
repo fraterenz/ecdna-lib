@@ -10,3 +10,6 @@
 ## v0.1.3
 ### Bugfix
 Fix the method `EcDNADistribution::drop_cells_with_k_copies`.
+
+## v0.2.0
+Remove the rng `ChaCha` and keep it generic with `impl Rng` trait.

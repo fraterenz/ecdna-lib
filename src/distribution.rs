@@ -1,11 +1,8 @@
-use std::cmp::{min, Ord};
-use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
-
+use crate::DNACopy;
 use anyhow::{bail, Context};
 use rand::{seq::SliceRandom, Rng};
-use rand_chacha::ChaCha8Rng;
-
-use crate::DNACopy;
+use std::cmp::{min, Ord};
+use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EcDNADistribution {
@@ -54,7 +51,7 @@ impl EcDNADistribution {
         self.nplus.is_empty()
     }
 
-    pub fn pick_remove_random_nplus(&mut self, rng: &mut ChaCha8Rng) -> anyhow::Result<DNACopy> {
+    pub fn pick_remove_random_nplus(&mut self, rng: &mut impl Rng) -> anyhow::Result<DNACopy> {
         //! Returns ecDNA copies of a nplus cell and remove it from the ecDNA
         //! distribution.
         //! Note that all cells with ecDNAs have the same probability of being
@@ -71,7 +68,7 @@ impl EcDNADistribution {
         }
     }
 
-    fn pick_random_nplus(&self, rng: &mut ChaCha8Rng) -> usize {
+    fn pick_random_nplus(&self, rng: &mut impl Rng) -> usize {
         rng.gen_range(0..self.nplus.len())
     }
 
@@ -90,7 +87,7 @@ impl EcDNADistribution {
         self.nminus += 1;
     }
 
-    pub fn decrease_nplus(&mut self, rng: &mut ChaCha8Rng, verbosity: u8) {
+    pub fn decrease_nplus(&mut self, rng: &mut impl Rng, verbosity: u8) {
         let idx = self.pick_random_nplus(rng);
 
         if verbosity > 1 {
@@ -145,7 +142,7 @@ impl EcDNADistribution {
         Ok(())
     }
 
-    pub fn undersample(&mut self, nb_cells: u64, rng: &mut ChaCha8Rng) {
+    pub fn undersample(&mut self, nb_cells: u64, rng: &mut impl Rng) {
         //! Draw a random sample without replacement from the
         //! `EcDNADistribution` by storing all cells into a `vec`, shuffling it
         //! and taking `nb_cells`.
@@ -368,6 +365,7 @@ mod tests {
     use quickcheck::{Arbitrary, Gen};
     use quickcheck_macros::quickcheck;
     use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
     use std::{
         collections::{hash_map::RandomState, HashSet},
         num::{NonZeroU64, NonZeroU8},
