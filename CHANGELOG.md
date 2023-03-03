@@ -13,3 +13,6 @@ Fix the method `EcDNADistribution::drop_cells_with_k_copies`.
 
 ## v0.2.0
 Remove the rng `ChaCha` and keep it generic with `impl Rng` trait.
+
+## v0.2.1
+Make `distribution.create_histogram` public.
