@@ -1,8 +1,20 @@
 use crate::DNACopy;
 use anyhow::{bail, Context};
 use rand::{seq::SliceRandom, Rng};
+use rand_distr::Distribution;
 use std::cmp::{min, Ord};
 use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
+
+/// Sampling strategies to sample the [`EcDNADistribution`].
+#[derive(Debug, Clone, Copy)]
+pub enum SamplingStrategy {
+    /// Randomly pick cells from the ecDNA distribution.
+    Uniform,
+    /// Map each entry of the ecDNA distribution `k` into a Normal distribution
+    /// with mean `k` and std of 1, and then randomly pick cells from this
+    /// modified distribution.
+    Gaussian,
+}
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct EcDNADistribution {
@@ -142,7 +154,44 @@ impl EcDNADistribution {
         Ok(())
     }
 
-    pub fn undersample(&mut self, nb_cells: u64, rng: &mut impl Rng) {
+    pub fn sample(&mut self, nb_cells: u64, strategy: &SamplingStrategy, mut rng: impl Rng) {
+        //! Draw a random sample without replacement from the
+        //! `EcDNADistribution` according to the [`SamplingStrategy`].
+        //!
+        //! ## Panics
+        //! Panics when `nb_cells` is bigger or equal to the cells in the
+        //! distribution or wheb `nb_cells` is 0.
+        assert!(nb_cells < (*self.get_nminus() + self.compute_nplus()));
+        assert!(nb_cells > 0);
+        match strategy {
+            SamplingStrategy::Uniform => {
+                self.undersample(nb_cells, &mut rng);
+            }
+            SamplingStrategy::Gaussian => {
+                // map each entry of the ecDNA distribution `k` into a Normal
+                // distribution with mean `k` and std of 1
+                let mut gaussian_copies =
+                    Vec::with_capacity(*self.get_nminus() as usize + self.compute_nplus() as usize);
+
+                for (k, cells) in self.create_histogram() {
+                    gaussian_copies.append(
+                        &mut rand_distr::Normal::new(k as f32, 1.)
+                            .unwrap()
+                            .sample_iter(&mut rng)
+                            .take(cells as usize)
+                            .map(|copy| f32::round(copy) as u16)
+                            .collect(),
+                    );
+                }
+                let mut distribution = EcDNADistribution::from(gaussian_copies);
+                distribution.undersample(nb_cells, &mut rng);
+                self.nplus = distribution.nplus;
+                self.nminus = distribution.nminus;
+            }
+        }
+    }
+
+    fn undersample(&mut self, nb_cells: u64, rng: &mut impl Rng) {
         //! Draw a random sample without replacement from the
         //! `EcDNADistribution` by storing all cells into a `vec`, shuffling it
         //! and taking `nb_cells`.
@@ -152,8 +201,6 @@ impl EcDNADistribution {
         //! ## Panics
         //! Panics when `nb_cells` is bigger or equal to the cells in the
         //! distribution or wheb `nb_cells` is 0.
-        assert!(nb_cells < (*self.get_nminus() + self.compute_nplus()));
-        assert!(nb_cells > 0);
         let mut distribution: Vec<u16> = self
             .nplus
             .iter()
@@ -829,18 +876,26 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn undersample_wrong_sample_size() {
+    fn sample_wrong_sample_size() {
         let my_vec = vec![0u16, 1u16];
         let mut distribution: EcDNADistribution = my_vec.into();
-        distribution.undersample(4, &mut ChaCha8Rng::seed_from_u64(26));
+        distribution.sample(
+            4,
+            &SamplingStrategy::Uniform,
+            &mut ChaCha8Rng::seed_from_u64(26),
+        );
     }
 
     #[test]
     #[should_panic]
-    fn undersample_wrong_sample_size_0() {
+    fn sample_wrong_sample_size_0() {
         let my_vec = vec![0u16, 1u16];
         let mut distribution: EcDNADistribution = my_vec.into();
-        distribution.undersample(0, &mut ChaCha8Rng::seed_from_u64(26));
+        distribution.sample(
+            0,
+            &SamplingStrategy::Uniform,
+            &mut ChaCha8Rng::seed_from_u64(26),
+        );
     }
 
     #[quickcheck]
