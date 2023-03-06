@@ -127,7 +127,7 @@ impl EcDNADistribution {
     }
 
     pub fn save(&self, path2file: &Path, verbosity: u8) -> anyhow::Result<()> {
-        let map = self.create_histogram();
+        let map: HashMap<u16, u64> = self.create_histogram();
         let distribution =
             serde_json::to_string(&map).expect("Cannot serialize the ecDNA distribution");
         if verbosity > 1 {
@@ -249,30 +249,17 @@ impl EcDNADistribution {
         statistic
     }
 
-    fn create_histogram(&self) -> HashMap<u16, u64> {
+    pub fn create_histogram(&self) -> HashMap<u16, u64> {
         let mut lookup = self.nplus.iter().fold(HashMap::new(), |mut acc, c| {
             let c_u16 = c.get();
-            *acc.entry(c_u16).or_insert(0) += 1u64;
+            *acc.entry(c_u16).or_insert(0) += 1;
             acc
         });
 
         if self.nminus > 0 {
-            lookup.insert(0, self.nminus);
+            lookup.insert(0, *self.get_nminus());
         }
 
-        lookup
-    }
-
-    fn create_histogram_f32(&self) -> HashMap<u16, f32> {
-        let mut lookup = self.nplus.iter().fold(HashMap::new(), |mut acc, c| {
-            let c_u16 = c.get();
-            *acc.entry(c_u16).or_insert(0f32) += 1f32;
-            acc
-        });
-
-        if self.nminus > 0 {
-            lookup.insert(0, self.nminus as f32);
-        }
         lookup
     }
 
@@ -334,7 +321,11 @@ impl EcDNADistribution {
 
     pub fn compute_entropy(&self) -> f32 {
         let ntot = self.compute_nplus() as f32 + self.nminus as f32;
-        let lookup = self.create_histogram_f32();
+        let lookup: HashMap<u16, f32> = self
+            .create_histogram()
+            .into_iter()
+            .map(|(k, copy)| (k, copy as f32))
+            .collect();
 
         -lookup
             .values()
@@ -783,7 +774,11 @@ mod tests {
                 .map(|&ele| NonZeroU16::new(ele).unwrap())
                 .collect(),
         };
-        let map1 = distribution.create_histogram_f32();
+        let map1: HashMap<u16, f32> = distribution
+            .create_histogram()
+            .into_iter()
+            .map(|(k, copy)| (k, copy as f32))
+            .collect();
         let map2 = HashMap::from([(1, 2f32), (2, 1f32), (200, 1f32)]);
         assert_eq!(map1.len(), map2.len());
         assert!(map1.keys().all(|k| map2.contains_key(k)));
@@ -799,7 +794,11 @@ mod tests {
                 .map(|&ele| NonZeroU16::new(ele).unwrap())
                 .collect(),
         };
-        let map1 = distribution.create_histogram_f32();
+        let map1: HashMap<u16, f32> = distribution
+            .create_histogram()
+            .into_iter()
+            .map(|(k, copy)| (k, copy as f32))
+            .collect();
         let map2 = HashMap::from([(0, 10f32), (1, 2f32), (2, 1f32), (200, 1f32)]);
         assert_eq!(map1.len(), map2.len());
         assert!(map1.keys().all(|k| map2.contains_key(k)));
