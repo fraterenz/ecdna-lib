@@ -16,3 +16,6 @@ Remove the rng `ChaCha` and keep it generic with `impl Rng` trait.
 
 ## v0.2.2
 Make `distribution.create_histogram` public and remove `create_histogram_f32`.
+
+## v0.3.0
+Make `undersample` private and `sample` public which samples the ecDNA distribution according to a `SamplingStrategy`.

@@ -1,11 +1,10 @@
 use std::num::NonZeroU16;
 
+/// Approximate Bayesian inference performed on two [`distribution::EcDNADistribution`]s.
+pub mod abc;
 /// The ecDNA distribution is a collection of cells with and without ecDNA
 /// copies.
 pub mod distribution;
-
-/// Approximate Bayesian inference performed on two [`distribution::EcDNADistribution`]s.
-pub mod abc;
 
 /// EcDNA copies are by definition non-zero.
 /// We assume that the maximal ecDNA copies present in a system cannot be

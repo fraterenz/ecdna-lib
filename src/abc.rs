@@ -210,7 +210,7 @@ mod tests {
             entropy: None,
         };
 
-        let results = ABCRejection::run(builder, &distribution.0, &target, 2);
+        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && results.mean_stat.is_none()
             && results.frequency_stat.is_none()
