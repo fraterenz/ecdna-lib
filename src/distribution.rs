@@ -13,6 +13,10 @@ pub enum SamplingStrategy {
     /// Map each entry of the ecDNA distribution `k` into a Normal distribution
     /// with mean `k` and std of 1, and then randomly pick cells from this
     /// modified distribution.
+    ///
+    /// Note that if the distribution contains only cells w/o any ecDNAs, then
+    /// this will not generate any new cell with ecDNA (that is it's a biased
+    /// Gaussian).
     Gaussian,
 }
 
@@ -163,31 +167,36 @@ impl EcDNADistribution {
         //! distribution or when `nb_cells` is 0.
         assert!(nb_cells <= (*self.get_nminus() + self.compute_nplus()));
         assert!(nb_cells > 0);
-        match strategy {
-            SamplingStrategy::Uniform => {
-                self.undersample(nb_cells, &mut rng);
-            }
-            SamplingStrategy::Gaussian => {
-                // map each entry of the ecDNA distribution `k` into a Normal
-                // distribution with mean `k` and std of 1
-                let mut gaussian_copies =
-                    Vec::with_capacity(*self.get_nminus() as usize + self.compute_nplus() as usize);
-
-                for (k, cells) in self.create_histogram() {
-                    gaussian_copies.append(
-                        &mut rand_distr::Normal::new(k as f32, 1.)
-                            .unwrap()
-                            .sample_iter(&mut rng)
-                            .take(cells as usize)
-                            .map(|copy| f32::round(copy) as u16)
-                            .collect(),
-                    );
+        if self.compute_nplus() > 0 {
+            match strategy {
+                SamplingStrategy::Uniform => {
+                    self.undersample(nb_cells, &mut rng);
                 }
-                let mut distribution = EcDNADistribution::from(gaussian_copies);
-                distribution.undersample(nb_cells, &mut rng);
-                self.nminus = distribution.nminus;
-                self.nplus = distribution.nplus;
+                SamplingStrategy::Gaussian => {
+                    // map each entry of the ecDNA distribution `k` into a Normal
+                    // distribution with mean `k` and std of 1
+                    let mut gaussian_copies = Vec::with_capacity(
+                        *self.get_nminus() as usize + self.compute_nplus() as usize,
+                    );
+
+                    for (k, cells) in self.create_histogram() {
+                        gaussian_copies.append(
+                            &mut rand_distr::Normal::new(k as f32, 1.)
+                                .unwrap()
+                                .sample_iter(&mut rng)
+                                .take(cells as usize)
+                                .map(|copy| f32::round(copy) as u16)
+                                .collect(),
+                        );
+                    }
+                    let mut distribution = EcDNADistribution::from(gaussian_copies);
+                    distribution.undersample(nb_cells, &mut rng);
+                    self.nminus = distribution.nminus;
+                    self.nplus = distribution.nplus;
+                }
             }
+        } else {
+            self.nminus = nb_cells;
         }
     }
 
@@ -901,9 +910,22 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_gaussian_test(seed: u64) {
+    fn sample_gaussian_only_zeros_test(seed: u64) -> bool {
+        let distr_vec = vec![0; 100];
+        let size = distr_vec.len();
+        let mut distribution = EcDNADistribution::from(distr_vec);
+        distribution.sample(
+            size as u64,
+            &SamplingStrategy::Gaussian,
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+        distribution.nplus.is_empty() && *distribution.get_nminus() as usize == size
+    }
+
+    #[quickcheck]
+    fn sample_gaussian_test(seed: u64) -> bool {
         let distr_vec = vec![1; 100];
-        let size = distr_vec.len() - 1;
+        let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
@@ -916,7 +938,7 @@ mod tests {
                 found = true;
             }
         }
-        assert!(found);
+        found
     }
 
     #[quickcheck]
