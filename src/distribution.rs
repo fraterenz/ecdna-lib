@@ -159,9 +159,9 @@ impl EcDNADistribution {
         //! `EcDNADistribution` according to the [`SamplingStrategy`].
         //!
         //! ## Panics
-        //! Panics when `nb_cells` is bigger or equal to the cells in the
-        //! distribution or wheb `nb_cells` is 0.
-        assert!(nb_cells < (*self.get_nminus() + self.compute_nplus()));
+        //! Panics when `nb_cells` is greater than the cells in the
+        //! distribution or when `nb_cells` is 0.
+        assert!(nb_cells <= (*self.get_nminus() + self.compute_nplus()));
         assert!(nb_cells > 0);
         match strategy {
             SamplingStrategy::Uniform => {
@@ -197,19 +197,20 @@ impl EcDNADistribution {
         //! and taking `nb_cells`.
         //!
         //! See [this](https://github.com/rust-random/book/blob/59649c93ed72e92c1644e3972a110f6ba5bc058d/src/guide-process.md).
-        //!
-        //! ## Panics
-        //! Panics when `nb_cells` is bigger or equal to the cells in the
-        //! distribution or wheb `nb_cells` is 0.
         let mut distribution: Vec<u16> = self
             .nplus
             .iter()
             .map(|&k| k.get())
             .chain(std::iter::repeat(0u16).take(*self.get_nminus() as usize))
             .collect();
-        // shuffle and take the first `nb_cells`
-        let (sample, _) = distribution.partial_shuffle(rng, nb_cells as usize);
+        let sample = if nb_cells as usize > self.nplus.len() / 2 {
+            let tot = distribution.len();
+            distribution.partial_shuffle(rng, tot - nb_cells as usize).1
+        } else {
+            distribution.partial_shuffle(rng, nb_cells as usize).0
+        };
         let new_distribution = EcDNADistribution::from(sample.to_vec());
+        // re-shuffle because EcDNADistribution::from sort the nplus cells
         self.nplus = new_distribution.nplus;
         let amount = self.nplus.len() / 3;
         self.nplus.partial_shuffle(rng, amount / 3);
@@ -916,6 +917,20 @@ mod tests {
             }
         }
         assert!(found);
+    }
+
+    #[quickcheck]
+    fn undersample_full_distribution(
+        mut distribution: NonEmptyDistribtionWithNPlusCells,
+        seed: u64,
+    ) -> bool {
+        let size = (distribution.0.compute_nplus() + *distribution.0.get_nminus()) as usize;
+        let mut distribution_sampled = distribution.0.clone();
+        distribution_sampled.undersample(size as u64, &mut ChaCha8Rng::seed_from_u64(seed));
+        distribution.0.nplus.sort();
+        distribution_sampled.nplus.sort();
+
+        distribution.0 == distribution_sampled
     }
 
     #[quickcheck]

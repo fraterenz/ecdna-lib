@@ -19,3 +19,6 @@ Make `distribution.create_histogram` public and remove `create_histogram_f32`.
 
 ## v0.3.0
 Make `undersample` private and `sample` public which samples the ecDNA distribution according to a `SamplingStrategy`.
+
+## v0.3.1
+Allows `sample` to take a sample with a number of cells equal to the ecDNA distribution size, that is to not undersample.
