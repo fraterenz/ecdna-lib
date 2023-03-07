@@ -6,7 +6,7 @@ use std::cmp::{min, Ord};
 use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
 
 /// Sampling strategies to sample the [`EcDNADistribution`].
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SamplingStrategy {
     /// Randomly pick cells from the ecDNA distribution.
     Uniform,

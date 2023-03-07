@@ -22,3 +22,6 @@ Make `undersample` private and `sample` public which samples the ecDNA distribut
 
 ## v0.3.1
 Allows `sample` to take a sample with a number of cells equal to the ecDNA distribution size, that is to not undersample.
+
+## v0.3.2
+Implement `Eq` for `SamplingStrategy`.
