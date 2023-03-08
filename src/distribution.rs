@@ -18,6 +18,10 @@ pub enum SamplingStrategy {
     /// this will not generate any new cell with ecDNA (that is it's a biased
     /// Gaussian).
     Gaussian,
+    /// Map each entry of the ecDNA distribution `k` into a Poisson
+    /// distribution with mean `k`, and then randomly pick cells from this
+    /// modified distribution.
+    Poisson,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -167,34 +171,56 @@ impl EcDNADistribution {
         //! distribution or when `nb_cells` is 0.
         assert!(nb_cells <= (*self.get_nminus() + self.compute_nplus()));
         assert!(nb_cells > 0);
+        // store the nminus: nminus cells stay in the nminus
+        // compartement, that is we dont apply Gaussian or Poisson
+        // pdf to them
+        let nminus = self.nminus;
         if self.compute_nplus() > 0 {
             match strategy {
-                SamplingStrategy::Uniform => {
-                    self.undersample(nb_cells, &mut rng);
-                }
-                SamplingStrategy::Gaussian => {
-                    // map each entry of the ecDNA distribution `k` into a Normal
-                    // distribution with mean `k` and std of 1
-                    let mut gaussian_copies = Vec::with_capacity(
+                SamplingStrategy::Uniform => {}
+                SamplingStrategy::Gaussian | SamplingStrategy::Poisson => {
+                    let mut ecdna_copies = Vec::with_capacity(
                         *self.get_nminus() as usize + self.compute_nplus() as usize,
                     );
-
-                    for (k, cells) in self.create_histogram() {
-                        gaussian_copies.append(
-                            &mut rand_distr::Normal::new(k as f32, 1.)
-                                .unwrap()
-                                .sample_iter(&mut rng)
-                                .take(cells as usize)
-                                .map(|copy| f32::round(copy) as u16)
-                                .collect(),
-                        );
+                    // drop the nminus so the hist will not contain any nminus
+                    // cells, the nminus cells stay in the 0 compartement (see
+                    // comment above)
+                    self.nminus = 0;
+                    match strategy {
+                        SamplingStrategy::Gaussian => {
+                            for (k, cells) in self.create_histogram() {
+                                ecdna_copies.append(
+                                    &mut rand_distr::Normal::new(k as f32, 1.)
+                                        .unwrap()
+                                        .sample_iter(&mut rng)
+                                        .take(cells as usize)
+                                        .map(|copy| f32::round(copy) as u16)
+                                        .collect(),
+                                );
+                            }
+                        }
+                        SamplingStrategy::Poisson => {
+                            for (k, cells) in self.create_histogram() {
+                                ecdna_copies.append(
+                                    &mut rand_distr::Poisson::new(k as f32)
+                                        .unwrap()
+                                        .sample_iter(&mut rng)
+                                        .take(cells as usize)
+                                        .map(|copy| f32::round(copy) as u16)
+                                        .collect(),
+                                );
+                            }
+                        }
+                        _ => unreachable!(),
                     }
-                    let mut distribution = EcDNADistribution::from(gaussian_copies);
-                    distribution.undersample(nb_cells, &mut rng);
-                    self.nminus = distribution.nminus;
+
+                    let distribution = EcDNADistribution::from(ecdna_copies);
+                    // re-insert the nminus cells
+                    self.nminus = nminus + distribution.nminus;
                     self.nplus = distribution.nplus;
                 }
             }
+            self.undersample(nb_cells, &mut rng);
         } else {
             self.nminus = nb_cells;
         }
@@ -907,6 +933,19 @@ mod tests {
             &SamplingStrategy::Uniform,
             &mut ChaCha8Rng::seed_from_u64(26),
         );
+    }
+
+    #[quickcheck]
+    fn sample_gaussian_2_zeros_1_one_test(seed: u64) -> bool {
+        let distr_vec = vec![0, 0, 1];
+        let size = distr_vec.len();
+        let mut distribution = EcDNADistribution::from(distr_vec);
+        distribution.sample(
+            size as u64,
+            &SamplingStrategy::Gaussian,
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+        distribution.compute_nplus() < 2
     }
 
     #[quickcheck]

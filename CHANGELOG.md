@@ -25,3 +25,9 @@ Allows `sample` to take a sample with a number of cells equal to the ecDNA distr
 
 ## v0.3.2
 Implement `Eq` for `SamplingStrategy`.
+
+## v0.3.4
+Implement `SamplingStrategy::Poisson`.
+### Bugfix
+Ensure that cells without ecDNAs cannot gain any ecDNA by randomly mapping the distribution to a Gaussian or Poisson.
+
