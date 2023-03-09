@@ -22,6 +22,10 @@ pub enum SamplingStrategy {
     /// distribution with mean `k`, and then randomly pick cells from this
     /// modified distribution.
     Poisson,
+    /// Map each entry of the ecDNA distribution `k` into a Exponential
+    /// distribution with a scale parameter (1/rate param), and then randomly
+    /// pick cells from this modified distribution.
+    Exponential(u8),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -178,7 +182,9 @@ impl EcDNADistribution {
         if self.compute_nplus() > 0 {
             match strategy {
                 SamplingStrategy::Uniform => {}
-                SamplingStrategy::Gaussian | SamplingStrategy::Poisson => {
+                SamplingStrategy::Gaussian
+                | SamplingStrategy::Poisson
+                | SamplingStrategy::Exponential(_) => {
                     let mut ecdna_copies = Vec::with_capacity(
                         *self.get_nminus() as usize + self.compute_nplus() as usize,
                     );
@@ -210,6 +216,15 @@ impl EcDNADistribution {
                                         .collect(),
                                 );
                             }
+                        }
+                        SamplingStrategy::Exponential(scale) => {
+                            let exp = rand_distr::Exp::new(1. / (*scale as f32)).unwrap();
+                            let tot = *self.get_nminus() + self.compute_nplus();
+                            ecdna_copies = exp
+                                .sample_iter(&mut rng)
+                                .take(tot as usize)
+                                .map(|copy| f32::round(copy) as u16)
+                                .collect();
                         }
                         _ => unreachable!(),
                     }
@@ -978,6 +993,19 @@ mod tests {
             }
         }
         found
+    }
+
+    #[quickcheck]
+    fn sample_exp_test(seed: u64) -> bool {
+        let distr_vec = vec![1; 100];
+        let size = distr_vec.len();
+        let mut distribution = EcDNADistribution::from(distr_vec);
+        distribution.sample(
+            size as u64,
+            &SamplingStrategy::Exponential(2),
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+        distribution.get_nminus() + distribution.compute_nplus() == size as u64
     }
 
     #[quickcheck]

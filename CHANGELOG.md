@@ -31,3 +31,6 @@ Implement `SamplingStrategy::Poisson`.
 ### Bugfix
 Ensure that cells without ecDNAs cannot gain any ecDNA by randomly mapping the distribution to a Gaussian or Poisson.
 
+## v0.3.5
+Implement `SamplingStrategy::Exponential(scale)`. Note that this distribution has the same scale parameters for all cells, that is independently of the number of `k` copies present in cells.
+
