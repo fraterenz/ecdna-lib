@@ -977,6 +977,27 @@ mod tests {
     }
 
     #[quickcheck]
+    fn sample_gaussian_range_copy_test(mut copy: DNACopy, seed: u64) -> bool {
+        let distr_vec = vec![copy.get(); 100];
+        if copy.get() < 5 {
+            copy = DNACopy::new(6).unwrap();
+        }
+        let min = copy.get() - 5;
+        let max = copy.get() + 5;
+        let size = distr_vec.len();
+        let mut distribution = EcDNADistribution::from(distr_vec);
+        distribution.sample(
+            size as u64,
+            &SamplingStrategy::Gaussian,
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+        distribution
+            .nplus
+            .into_iter()
+            .all(|copy| min < copy.get() && copy.get() < max)
+    }
+
+    #[quickcheck]
     fn sample_gaussian_test(seed: u64) -> bool {
         let distr_vec = vec![1; 100];
         let size = distr_vec.len();
