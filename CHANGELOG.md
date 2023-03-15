@@ -34,3 +34,5 @@ Ensure that cells without ecDNAs cannot gain any ecDNA by randomly mapping the d
 ## v0.3.5
 Implement `SamplingStrategy::Exponential(scale)`. Note that this distribution has the same scale parameters for all cells, that is independently of the number of `k` copies present in cells.
 
+## v0.4.0
+The exponential strategy for sampling takes a `NonZeroU8` as parameter and perform the following mapping: `k(1 - r)` where `r` is a random number generated from `Exp(NonZeroU8)`.

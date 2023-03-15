@@ -3,6 +3,7 @@ use anyhow::{bail, Context};
 use rand::{seq::SliceRandom, Rng};
 use rand_distr::Distribution;
 use std::cmp::{min, Ord};
+use std::num::NonZeroU8;
 use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
 
 /// Sampling strategies to sample the [`EcDNADistribution`].
@@ -23,9 +24,13 @@ pub enum SamplingStrategy {
     /// modified distribution.
     Poisson,
     /// Map each entry of the ecDNA distribution `k` into a Exponential
-    /// distribution with a scale parameter (1/rate param), and then randomly
+    /// distribution with a scale parameter (`rate` param), and then randomly
     /// pick cells from this modified distribution.
-    Exponential(u8),
+    ///
+    /// The mapping is `k * (1-exp(rate))` or how many copies are still there
+    /// if we assume that some get degraded as at an exp `rate`? Wouldn't this
+    /// be a Poisson point process? I'm confused.
+    Exponential(NonZeroU8),
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -217,14 +222,17 @@ impl EcDNADistribution {
                                 );
                             }
                         }
-                        SamplingStrategy::Exponential(scale) => {
-                            let exp = rand_distr::Exp::new(1. / (*scale as f32)).unwrap();
-                            let tot = *self.get_nminus() + self.compute_nplus();
-                            ecdna_copies = exp
-                                .sample_iter(&mut rng)
-                                .take(tot as usize)
-                                .map(|copy| f32::round(copy) as u16)
-                                .collect();
+                        SamplingStrategy::Exponential(rate) => {
+                            let exp = rand_distr::Exp::new(rate.get() as f32).unwrap();
+                            for (k, cells) in self.create_histogram() {
+                                ecdna_copies.append(
+                                    &mut exp
+                                        .sample_iter(&mut rng)
+                                        .take(cells as usize)
+                                        .map(|copy| f32::round(k as f32 * (1. - copy)) as u16)
+                                        .collect(),
+                                );
+                            }
                         }
                         _ => unreachable!(),
                     }
@@ -1017,16 +1025,38 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_exp_test(seed: u64) -> bool {
+    fn sample_exp_test(rate: NonZeroU8, seed: u64) -> bool {
         let distr_vec = vec![1; 100];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Exponential(2),
+            &SamplingStrategy::Exponential(rate),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.get_nminus() + distribution.compute_nplus() == size as u64
+    }
+
+    #[quickcheck]
+    fn sample_exp_range_copy_test(
+        copy1: DNACopy,
+        copy2: DNACopy,
+        rate: NonZeroU8,
+        seed: u64,
+    ) -> bool {
+        let distr_vec = vec![copy1.get(), copy2.get()];
+        let max = if copy2.ge(&copy1) { copy2 } else { copy1 };
+        let size = distr_vec.len();
+        let mut distribution = EcDNADistribution::from(distr_vec);
+        dbg!(&distribution.nplus);
+        distribution.sample(
+            size as u64,
+            &SamplingStrategy::Exponential(rate),
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+        dbg!(&distribution.nplus);
+        dbg!(&copy2, &copy1, &max);
+        distribution.nplus.iter().all(|ecdna| max.ge(ecdna))
     }
 
     #[quickcheck]
