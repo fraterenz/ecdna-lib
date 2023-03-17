@@ -42,3 +42,6 @@ BugFix: `lambda` of the exponential is `f32` not `NonZeroU8`.
 
 ## v0.4.2
 Implement `Display` for the `EcDNADistribution`.
+
+## v0.4.3
+Sort by keys (`DNACopy`) while displaying the `EcDNADistribution`.

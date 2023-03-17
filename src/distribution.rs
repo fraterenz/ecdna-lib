@@ -62,14 +62,15 @@ pub struct EcDNADistribution {
 }
 
 impl fmt::Display for EcDNADistribution {
-    // This trait requires `fmt` with this exact signature.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Write strictly the first element into the supplied output
-        // stream: `f`. Returns `fmt::Result` which indicates whether the
-        // operation succeeded or failed. Note that `write!` uses syntax which
-        // is very similar to `println!`.
-        let hist = self.create_histogram();
-        write!(f, "{:#?}", hist)
+        let mut hist = self
+            .create_histogram()
+            .into_iter()
+            .collect::<Vec<(u16, u64)>>();
+        hist.sort_by_key(|(ecdna, _)| *ecdna);
+        hist.into_iter()
+            .map(|(ecdna, cells)| write!(f, "{}:{}\n", ecdna, cells))
+            .collect()
     }
 }
 
