@@ -39,3 +39,6 @@ The exponential strategy for sampling takes a `NonZeroU8` as parameter and perfo
 
 ## v0.4.1
 BugFix: `lambda` of the exponential is `f32` not `NonZeroU8`.
+
+## v0.4.2
+Implement `Display` for the `EcDNADistribution`.

@@ -3,6 +3,7 @@ use anyhow::{bail, Context};
 use rand::{seq::SliceRandom, Rng};
 use rand_distr::Distribution;
 use std::cmp::{min, Ord};
+use std::fmt;
 use std::{collections::HashMap, fs, num::NonZeroU16, path::Path};
 
 /// Sampling strategies to sample the [`EcDNADistribution`].
@@ -33,6 +34,8 @@ pub enum SamplingStrategy {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// The lambda of the Exponential function used to sample the distribution with
+/// [`SamplingStrategy::Exponential`].
 pub struct Lambda(f32);
 
 impl Lambda {
@@ -56,6 +59,18 @@ impl Lambda {
 pub struct EcDNADistribution {
     nminus: u64,
     nplus: Vec<DNACopy>,
+}
+
+impl fmt::Display for EcDNADistribution {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // Write strictly the first element into the supplied output
+        // stream: `f`. Returns `fmt::Result` which indicates whether the
+        // operation succeeded or failed. Note that `write!` uses syntax which
+        // is very similar to `println!`.
+        let hist = self.create_histogram();
+        write!(f, "{:#?}", hist)
+    }
 }
 
 impl From<Vec<u16>> for EcDNADistribution {
@@ -1218,5 +1233,10 @@ mod tests {
             }
         }
         true
+    }
+
+    #[quickcheck]
+    fn test_display(distribution: NonEmptyDistribtionWithNPlusCells) {
+        println!("{}", distribution.0);
     }
 }
