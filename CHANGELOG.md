@@ -45,3 +45,6 @@ Implement `Display` for the `EcDNADistribution`.
 
 ## v0.4.3
 Sort by keys (`DNACopy`) while displaying the `EcDNADistribution`.
+
+## v0.4.4
+Method `EcDNADistribution::sample` is reproducible.

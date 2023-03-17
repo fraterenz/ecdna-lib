@@ -206,7 +206,12 @@ impl EcDNADistribution {
         Ok(())
     }
 
-    pub fn sample(&mut self, nb_cells: u64, strategy: &SamplingStrategy, mut rng: impl Rng) {
+    pub fn sample<R: Rng + Clone>(
+        &mut self,
+        nb_cells: u64,
+        strategy: &SamplingStrategy,
+        rng: &mut R,
+    ) {
         //! Draw a random sample without replacement from the
         //! `EcDNADistribution` according to the [`SamplingStrategy`].
         //!
@@ -238,7 +243,7 @@ impl EcDNADistribution {
                                 ecdna_copies.append(
                                     &mut rand_distr::Normal::new(k as f32, 1.)
                                         .unwrap()
-                                        .sample_iter(&mut rng)
+                                        .sample_iter(rng.clone())
                                         .take(cells as usize)
                                         .map(|copy| f32::round(copy) as u16)
                                         .collect(),
@@ -250,7 +255,7 @@ impl EcDNADistribution {
                                 ecdna_copies.append(
                                     &mut rand_distr::Poisson::new(k as f32)
                                         .unwrap()
-                                        .sample_iter(&mut rng)
+                                        .sample_iter(rng.clone())
                                         .take(cells as usize)
                                         .map(|copy| f32::round(copy) as u16)
                                         .collect(),
@@ -262,7 +267,7 @@ impl EcDNADistribution {
                             for (k, cells) in self.create_histogram() {
                                 ecdna_copies.append(
                                     &mut exp
-                                        .sample_iter(&mut rng)
+                                        .sample_iter(rng.clone())
                                         .take(cells as usize)
                                         .map(|copy| f32::round(k as f32 * (1. - copy)) as u16)
                                         .collect(),
@@ -278,7 +283,7 @@ impl EcDNADistribution {
                     self.nplus = distribution.nplus;
                 }
             }
-            self.undersample(nb_cells, &mut rng);
+            self.undersample(nb_cells, rng);
         } else {
             self.nminus = nb_cells;
         }
@@ -1096,13 +1101,37 @@ mod tests {
         let distr_vec = vec![1; 100];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
-        dbg!(lambda.0);
         distribution.sample(
             size as u64,
             &SamplingStrategy::Exponential(lambda.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.get_nminus() + distribution.compute_nplus() == size as u64
+    }
+
+    #[quickcheck]
+    fn sample_exp_reproducible_test(
+        lambda: LambdaGrZeroExp,
+        distribution: NonEmptyDistribtionWithNPlusCells,
+        seed: u64,
+    ) -> bool {
+        let size = distribution.0.compute_nplus() + *distribution.0.get_nminus();
+
+        let mut distr1 = distribution.0.clone();
+        distr1.sample(
+            size as u64,
+            &SamplingStrategy::Exponential(lambda.0),
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+
+        let mut distr2 = distribution.0.clone();
+        distr2.sample(
+            size as u64,
+            &SamplingStrategy::Exponential(lambda.0),
+            &mut ChaCha8Rng::seed_from_u64(seed),
+        );
+
+        distr1 == distr2
     }
 
     #[quickcheck]
