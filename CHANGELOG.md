@@ -36,3 +36,6 @@ Implement `SamplingStrategy::Exponential(scale)`. Note that this distribution ha
 
 ## v0.4.0
 The exponential strategy for sampling takes a `NonZeroU8` as parameter and perform the following mapping: `k(1 - r)` where `r` is a random number generated from `Exp(NonZeroU8)`.
+
+## v0.4.1
+BugFix: `lambda` of the exponential is `f32` not `NonZeroU8`.
