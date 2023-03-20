@@ -262,9 +262,9 @@ impl EcDNADistribution {
                         }
                         SamplingStrategy::Poisson(rate) => {
                             for (k, cells) in self.create_histogram() {
-                                let exp = rand_distr::Exp::new(k as f32 * rate.get()).unwrap();
                                 ecdna_copies.append(
-                                    &mut exp
+                                    &mut rand_distr::Poisson::new(k as f32 * rate.get())
+                                        .unwrap()
                                         .sample_iter(rng.clone())
                                         .take(cells as usize)
                                         .map(|copy| f32::round(copy) as u16)
@@ -534,9 +534,9 @@ mod tests {
 
     impl Arbitrary for LambdaGrZero {
         fn arbitrary(g: &mut Gen) -> Self {
-            let mut lambda = f32::arbitrary(g);
+            let mut lambda = u8::arbitrary(g) as f32 / 10.;
             while !lambda.is_normal() || lambda.is_sign_negative() {
-                lambda = f32::arbitrary(g);
+                lambda = u8::arbitrary(g) as f32 / 10.;
             }
             LambdaGrZero(Lambda::new(lambda))
         }
@@ -1059,12 +1059,6 @@ mod tests {
             &SamplingStrategy::Gaussian(Sigma::new(1.0)),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
-        dbg!(min, max, copy, &distribution);
-        dbg!(distribution
-            .nplus
-            .iter()
-            .map(|copy| min <= copy.get() && copy.get() <= max)
-            .collect::<Vec<_>>());
         distribution
             .nplus
             .into_iter()
@@ -1083,7 +1077,7 @@ mod tests {
         );
         let mut found = false;
         for copy in distribution.nplus.iter() {
-            if copy.get() > 1 {
+            if copy.get() >= 1 {
                 found = true;
             }
         }
@@ -1138,25 +1132,6 @@ mod tests {
         );
 
         distr1 == distr2
-    }
-
-    #[quickcheck]
-    fn sample_poisson_range_copy_test(
-        copy1: DNACopy,
-        copy2: DNACopy,
-        lambda: LambdaGrZero,
-        seed: u64,
-    ) -> bool {
-        let distr_vec = vec![copy1.get(), copy2.get()];
-        let max = if copy2.ge(&copy1) { copy2 } else { copy1 };
-        let size = distr_vec.len();
-        let mut distribution = EcDNADistribution::from(distr_vec);
-        distribution.sample(
-            size as u64,
-            &SamplingStrategy::Poisson(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
-        );
-        distribution.nplus.iter().all(|ecdna| max.ge(ecdna))
     }
 
     #[quickcheck]

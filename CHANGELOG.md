@@ -54,3 +54,6 @@ Method `EcDNADistribution::sample` is reproducible.
 We were doing it the exponential noise wrong: this is a Poisson point process with `lambda` which varies for each sample and `k` being the number of copies to transcribed.
 This generates a Poisson point process with mean `k*lambda` (assuming same `lambda` for each all copies, that is an homogeneous Poisson point process), see [wikipedia](https://en.wikipedia.org/wiki/Poisson_point_process#Poisson_distribution_of_point_counts).
 
+
+## v0.5.1
+BugFix: `Poisson` instead of `Exp` in sampling.
