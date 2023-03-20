@@ -18,24 +18,37 @@ pub enum SamplingStrategy {
     /// Note that if the distribution contains only cells w/o any ecDNAs, then
     /// this will not generate any new cell with ecDNA (that is it's a biased
     /// Gaussian).
-    Gaussian,
-    /// Map each entry of the ecDNA distribution `k` into a Poisson
-    /// distribution with mean `k`, and then randomly pick cells from this
-    /// modified distribution.
-    Poisson,
-    /// Map each entry of the ecDNA distribution `k` into a Exponential
-    /// distribution with a scale parameter (`rate` param), and then randomly
-    /// pick cells from this modified distribution.
-    ///
-    /// The mapping is `k * (1-exp(rate))` or how many copies are still there
-    /// if we assume that some get degraded as at an exp `rate`? Wouldn't this
-    /// be a Poisson point process? I'm confused.
-    Exponential(Lambda),
+    Gaussian(Sigma),
+    /// Map each entry of the ecDNA distribution `k` into a Poisson point
+    /// process with mean `lambda * k` and , and then randomly pick cells from
+    /// this modified distribution.
+    Poisson(Lambda),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-/// The lambda of the Exponential function used to sample the distribution with
-/// [`SamplingStrategy::Exponential`].
+/// The standard deviation of the Normal distribution used to sample the ecDNA
+/// distribution with [`SamplingStrategy::Gaussian`].
+///
+/// Is a float that cannot be smaller or equal than 0 nor infinite.
+pub struct Sigma(Lambda);
+
+impl Sigma {
+    pub fn new(sigma: f32) -> Sigma {
+        //! ## Panics
+        //! When sigma is smaller or equal than 0 or is not finite.
+        Sigma(Lambda::new(sigma))
+    }
+
+    pub fn get(&self) -> f32 {
+        self.0 .0
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// The lambda of the Poisson point process used to sample the ecDNA
+/// distribution with [`SamplingStrategy::Poisson`].
+///
+/// Is a float that cannot be smaller or equal than 0 nor infinite.
 pub struct Lambda(f32);
 
 impl Lambda {
@@ -69,8 +82,7 @@ impl fmt::Display for EcDNADistribution {
             .collect::<Vec<(u16, u64)>>();
         hist.sort_by_key(|(ecdna, _)| *ecdna);
         hist.into_iter()
-            .map(|(ecdna, cells)| write!(f, "{}:{}\n", ecdna, cells))
-            .collect()
+            .try_for_each(|(ecdna, cells)| writeln!(f, "{}:{}", ecdna, cells))
     }
 }
 
@@ -227,9 +239,7 @@ impl EcDNADistribution {
         if self.compute_nplus() > 0 {
             match strategy {
                 SamplingStrategy::Uniform => {}
-                SamplingStrategy::Gaussian
-                | SamplingStrategy::Poisson
-                | SamplingStrategy::Exponential(_) => {
+                SamplingStrategy::Gaussian(_) | SamplingStrategy::Poisson(_) => {
                     let mut ecdna_copies = Vec::with_capacity(
                         *self.get_nminus() as usize + self.compute_nplus() as usize,
                     );
@@ -238,10 +248,10 @@ impl EcDNADistribution {
                     // comment above)
                     self.nminus = 0;
                     match strategy {
-                        SamplingStrategy::Gaussian => {
+                        SamplingStrategy::Gaussian(sigma) => {
                             for (k, cells) in self.create_histogram() {
                                 ecdna_copies.append(
-                                    &mut rand_distr::Normal::new(k as f32, 1.)
+                                    &mut rand_distr::Normal::new(k as f32, sigma.get())
                                         .unwrap()
                                         .sample_iter(rng.clone())
                                         .take(cells as usize)
@@ -250,26 +260,14 @@ impl EcDNADistribution {
                                 );
                             }
                         }
-                        SamplingStrategy::Poisson => {
+                        SamplingStrategy::Poisson(rate) => {
                             for (k, cells) in self.create_histogram() {
-                                ecdna_copies.append(
-                                    &mut rand_distr::Poisson::new(k as f32)
-                                        .unwrap()
-                                        .sample_iter(rng.clone())
-                                        .take(cells as usize)
-                                        .map(|copy| f32::round(copy) as u16)
-                                        .collect(),
-                                );
-                            }
-                        }
-                        SamplingStrategy::Exponential(rate) => {
-                            let exp = rand_distr::Exp::new(rate.get()).unwrap();
-                            for (k, cells) in self.create_histogram() {
+                                let exp = rand_distr::Exp::new(k as f32 * rate.get()).unwrap();
                                 ecdna_copies.append(
                                     &mut exp
                                         .sample_iter(rng.clone())
                                         .take(cells as usize)
-                                        .map(|copy| f32::round(k as f32 * (1. - copy)) as u16)
+                                        .map(|copy| f32::round(copy) as u16)
                                         .collect(),
                                 );
                             }
@@ -524,15 +522,23 @@ mod tests {
     }
 
     #[derive(Clone, Debug)]
-    pub struct LambdaGrZeroExp(pub Lambda);
+    pub struct SigmaGrZero(pub Sigma);
 
-    impl Arbitrary for LambdaGrZeroExp {
+    impl Arbitrary for SigmaGrZero {
+        fn arbitrary(g: &mut Gen) -> Self {
+            SigmaGrZero(Sigma(LambdaGrZero::arbitrary(g).0))
+        }
+    }
+    #[derive(Clone, Debug)]
+    pub struct LambdaGrZero(pub Lambda);
+
+    impl Arbitrary for LambdaGrZero {
         fn arbitrary(g: &mut Gen) -> Self {
             let mut lambda = f32::arbitrary(g);
             while !lambda.is_normal() || lambda.is_sign_negative() {
                 lambda = f32::arbitrary(g);
             }
-            LambdaGrZeroExp(Lambda::new(lambda))
+            LambdaGrZero(Lambda::new(lambda))
         }
     }
 
@@ -1012,26 +1018,26 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_gaussian_2_zeros_1_one_test(seed: u64) -> bool {
+    fn sample_gaussian_2_zeros_1_one_test(sigma: SigmaGrZero, seed: u64) -> bool {
         let distr_vec = vec![0, 0, 1];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Gaussian,
+            &SamplingStrategy::Gaussian(sigma.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.compute_nplus() < 2
     }
 
     #[quickcheck]
-    fn sample_gaussian_only_zeros_test(seed: u64) -> bool {
+    fn sample_gaussian_only_zeros_test(sigma: SigmaGrZero, seed: u64) -> bool {
         let distr_vec = vec![0; 100];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Gaussian,
+            &SamplingStrategy::Gaussian(sigma.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.nplus.is_empty() && *distribution.get_nminus() as usize == size
@@ -1050,7 +1056,7 @@ mod tests {
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Gaussian,
+            &SamplingStrategy::Gaussian(Sigma::new(1.0)),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         dbg!(min, max, copy, &distribution);
@@ -1066,13 +1072,13 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_gaussian_test(seed: u64) -> bool {
+    fn sample_gaussian_test(seed: u64, sigma: SigmaGrZero) -> bool {
         let distr_vec = vec![1; 100];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Gaussian,
+            &SamplingStrategy::Gaussian(sigma.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         let mut found = false;
@@ -1086,32 +1092,32 @@ mod tests {
 
     #[should_panic]
     #[test]
-    fn lambda_0_small_exp_test() {
+    fn lambda_0_small_poisson_test() {
         Lambda::new(0.);
     }
 
     #[should_panic]
     #[test]
-    fn lambda_too_small_exp_test() {
+    fn lambda_too_small_poisson_test() {
         Lambda::new(-1.0);
     }
 
     #[quickcheck]
-    fn sample_exp_test(lambda: LambdaGrZeroExp, seed: u64) -> bool {
+    fn sample_poisson_test(lambda: LambdaGrZero, seed: u64) -> bool {
         let distr_vec = vec![1; 100];
         let size = distr_vec.len();
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Exponential(lambda.0),
+            &SamplingStrategy::Poisson(lambda.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.get_nminus() + distribution.compute_nplus() == size as u64
     }
 
     #[quickcheck]
-    fn sample_exp_reproducible_test(
-        lambda: LambdaGrZeroExp,
+    fn sample_poisson_reproducible_test(
+        lambda: LambdaGrZero,
         distribution: NonEmptyDistribtionWithNPlusCells,
         seed: u64,
     ) -> bool {
@@ -1119,15 +1125,15 @@ mod tests {
 
         let mut distr1 = distribution.0.clone();
         distr1.sample(
-            size as u64,
-            &SamplingStrategy::Exponential(lambda.0),
+            size,
+            &SamplingStrategy::Poisson(lambda.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
 
-        let mut distr2 = distribution.0.clone();
+        let mut distr2 = distribution.0;
         distr2.sample(
-            size as u64,
-            &SamplingStrategy::Exponential(lambda.0),
+            size,
+            &SamplingStrategy::Poisson(lambda.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
 
@@ -1135,10 +1141,10 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_exp_range_copy_test(
+    fn sample_poisson_range_copy_test(
         copy1: DNACopy,
         copy2: DNACopy,
-        lambda: LambdaGrZeroExp,
+        lambda: LambdaGrZero,
         seed: u64,
     ) -> bool {
         let distr_vec = vec![copy1.get(), copy2.get()];
@@ -1147,7 +1153,7 @@ mod tests {
         let mut distribution = EcDNADistribution::from(distr_vec);
         distribution.sample(
             size as u64,
-            &SamplingStrategy::Exponential(lambda.0),
+            &SamplingStrategy::Poisson(lambda.0),
             &mut ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.nplus.iter().all(|ecdna| max.ge(ecdna))

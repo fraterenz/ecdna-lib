@@ -48,3 +48,9 @@ Sort by keys (`DNACopy`) while displaying the `EcDNADistribution`.
 
 ## v0.4.4
 Method `EcDNADistribution::sample` is reproducible.
+
+## v0.5.0
+### BugFix
+We were doing it the exponential noise wrong: this is a Poisson point process with `lambda` which varies for each sample and `k` being the number of copies to transcribed.
+This generates a Poisson point process with mean `k*lambda` (assuming same `lambda` for each all copies, that is an homogeneous Poisson point process), see [wikipedia](https://en.wikipedia.org/wiki/Poisson_point_process#Poisson_distribution_of_point_counts).
+
