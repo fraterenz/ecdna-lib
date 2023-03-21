@@ -38,7 +38,8 @@ Implement `SamplingStrategy::Exponential(scale)`. Note that this distribution ha
 The exponential strategy for sampling takes a `NonZeroU8` as parameter and perform the following mapping: `k(1 - r)` where `r` is a random number generated from `Exp(NonZeroU8)`.
 
 ## v0.4.1
-BugFix: `lambda` of the exponential is `f32` not `NonZeroU8`.
+### BugFix
+`lambda` of the exponential is `f32` not `NonZeroU8`.
 
 ## v0.4.2
 Implement `Display` for the `EcDNADistribution`.
@@ -54,6 +55,10 @@ Method `EcDNADistribution::sample` is reproducible.
 We were doing it the exponential noise wrong: this is a Poisson point process with `lambda` which varies for each sample and `k` being the number of copies to transcribed.
 This generates a Poisson point process with mean `k*lambda` (assuming same `lambda` for each all copies, that is an homogeneous Poisson point process), see [wikipedia](https://en.wikipedia.org/wiki/Poisson_point_process#Poisson_distribution_of_point_counts).
 
-
 ## v0.5.1
-BugFix: `Poisson` instead of `Exp` in sampling.
+### BugFix
+`Poisson` instead of `Exp` in sampling.
+
+## v0.5.2
+Reintroduce exponential sampling.
+
