@@ -62,3 +62,6 @@ This generates a Poisson point process with mean `k*lambda` (assuming same `lamb
 ## v0.5.2
 Reintroduce exponential sampling.
 
+## v0.5.3
+### BugFix
+Fix the exponential sampling `k * exp` instead of `k (1 - exp)`.
