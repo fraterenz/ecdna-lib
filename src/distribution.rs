@@ -288,7 +288,7 @@ impl EcDNADistribution {
                                     &mut exp
                                         .sample_iter(rng.clone())
                                         .take(cells as usize)
-                                        .map(|copy| f32::round(k as f32 * (1. - copy)) as u16)
+                                        .map(|copy| f32::round(k as f32 * copy) as u16)
                                         .collect(),
                                 );
                             }
