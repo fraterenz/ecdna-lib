@@ -486,6 +486,28 @@ impl EcDNADistribution {
         mean / n
     }
 
+    pub fn compute_variance(&self) -> f32 {
+        //! Compute the variance and returs `f32::NAN` if no cells are present.
+        let mean = self.compute_mean();
+        if mean.is_nan() {
+            f32::NAN
+        } else {
+            let mut variance = self
+                .nplus
+                .iter()
+                .map(|value| {
+                    let diff = mean - (value.get() as f32);
+
+                    diff * diff
+                })
+                .sum::<f32>();
+            variance += *self.get_nminus() as f32 * mean * mean;
+            variance /= (*self.get_nminus() + self.compute_nplus()) as f32;
+
+            variance
+        }
+    }
+
     pub fn compute_entropy(&self) -> f32 {
         let ntot = self.compute_nplus() as f32 + self.nminus as f32;
         let lookup: HashMap<u16, f32> = self
@@ -652,6 +674,42 @@ mod tests {
         }
         .compute_mean()
             == copies.get() as f32
+    }
+
+    #[test]
+    fn compute_variance_no_cells() {
+        let distribution = EcDNADistribution {
+            nminus: 0,
+            nplus: vec![],
+        };
+        assert!(distribution.compute_variance().is_nan());
+    }
+
+    #[quickcheck]
+    fn compute_variance_no_nminus(nplus: NonZeroU8) -> bool {
+        let distribution = EcDNADistribution {
+            nminus: 0,
+            nplus: vec![DNACopy::new(1).unwrap(); nplus.get() as usize],
+        };
+        (distribution.compute_variance() - 0.).abs() < f32::EPSILON
+    }
+
+    #[quickcheck]
+    fn compute_variance_no_nplus(nminus: NonZeroU8) -> bool {
+        let distribution = EcDNADistribution {
+            nminus: nminus.get() as u64,
+            nplus: vec![],
+        };
+        (distribution.compute_variance() - 0.).abs() < f32::EPSILON
+    }
+
+    #[test]
+    fn compute_variance_equal_1() {
+        let distribution = EcDNADistribution {
+            nminus: 1,
+            nplus: vec![DNACopy::new(2).unwrap()],
+        };
+        assert!((distribution.compute_variance() - 1.).abs() < f32::EPSILON);
     }
 
     #[quickcheck]

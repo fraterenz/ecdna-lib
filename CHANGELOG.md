@@ -1,4 +1,8 @@
 # Changelog
+## v0.5.4
+### Added
+Computation of the variance `EcDNADistribution::compute_variance`.
+
 ## v0.5.3
 ### BugFix
 Fix the exponential sampling `k * exp` instead of `k (1 - exp)`.
