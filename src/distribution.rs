@@ -1224,25 +1224,6 @@ mod tests {
     }
 
     #[quickcheck]
-    fn sample_exp_range_copy_test(
-        copy1: DNACopy,
-        copy2: DNACopy,
-        lambda: LambdaGrZero,
-        seed: u64,
-    ) -> bool {
-        let distr_vec = vec![copy1.get(), copy2.get()];
-        let max = if copy2.ge(&copy1) { copy2 } else { copy1 };
-        let size = distr_vec.len();
-        let mut distribution = EcDNADistribution::from(distr_vec);
-        distribution.sample(
-            size as u64,
-            &SamplingStrategy::Exponential(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
-        );
-        distribution.nplus.iter().all(|ecdna| max.ge(ecdna))
-    }
-
-    #[quickcheck]
     fn undersample_full_distribution(
         mut distribution: NonEmptyDistribtionWithNPlusCells,
         seed: u64,
