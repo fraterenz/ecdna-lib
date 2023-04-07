@@ -225,12 +225,7 @@ impl EcDNADistribution {
         Ok(())
     }
 
-    pub fn sample<R: Rng + Clone>(
-        &mut self,
-        nb_cells: u64,
-        strategy: &SamplingStrategy,
-        rng: &mut R,
-    ) {
+    pub fn sample<R: Rng + Clone>(&mut self, nb_cells: u64, strategy: &SamplingStrategy, rng: R) {
         //! Draw a random sample without replacement from the
         //! `EcDNADistribution` according to the [`SamplingStrategy`].
         //!
@@ -308,7 +303,7 @@ impl EcDNADistribution {
         }
     }
 
-    fn undersample(&mut self, nb_cells: u64, rng: &mut impl Rng) {
+    fn undersample(&mut self, nb_cells: u64, mut rng: impl Rng) {
         //! Draw a random sample without replacement from the
         //! `EcDNADistribution` by storing all cells into a `vec`, shuffling it
         //! and taking `nb_cells`.
@@ -322,15 +317,17 @@ impl EcDNADistribution {
             .collect();
         let sample = if nb_cells as usize > self.nplus.len() / 2 {
             let tot = distribution.len();
-            distribution.partial_shuffle(rng, tot - nb_cells as usize).1
+            distribution
+                .partial_shuffle(&mut rng, tot - nb_cells as usize)
+                .1
         } else {
-            distribution.partial_shuffle(rng, nb_cells as usize).0
+            distribution.partial_shuffle(&mut rng, nb_cells as usize).0
         };
         let new_distribution = EcDNADistribution::from(sample.to_vec());
         // re-shuffle because EcDNADistribution::from sort the nplus cells
         self.nplus = new_distribution.nplus;
         let amount = self.nplus.len() / 3;
-        self.nplus.partial_shuffle(rng, amount / 3);
+        self.nplus.partial_shuffle(&mut rng, amount / 3);
         self.nminus = new_distribution.nminus;
     }
 
@@ -1077,11 +1074,7 @@ mod tests {
     fn sample_wrong_sample_size() {
         let my_vec = vec![0u16, 1u16];
         let mut distribution: EcDNADistribution = my_vec.into();
-        distribution.sample(
-            4,
-            &SamplingStrategy::Uniform,
-            &mut ChaCha8Rng::seed_from_u64(26),
-        );
+        distribution.sample(4, &SamplingStrategy::Uniform, ChaCha8Rng::seed_from_u64(26));
     }
 
     #[test]
@@ -1089,11 +1082,7 @@ mod tests {
     fn sample_wrong_sample_size_0() {
         let my_vec = vec![0u16, 1u16];
         let mut distribution: EcDNADistribution = my_vec.into();
-        distribution.sample(
-            0,
-            &SamplingStrategy::Uniform,
-            &mut ChaCha8Rng::seed_from_u64(26),
-        );
+        distribution.sample(0, &SamplingStrategy::Uniform, ChaCha8Rng::seed_from_u64(26));
     }
 
     #[quickcheck]
@@ -1104,7 +1093,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Gaussian(sigma.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.compute_nplus() < 2
     }
@@ -1117,7 +1106,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Gaussian(sigma.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.nplus.is_empty() && *distribution.get_nminus() as usize == size
     }
@@ -1136,7 +1125,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Gaussian(Sigma::new(1.0)),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         distribution
             .nplus
@@ -1152,7 +1141,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Gaussian(sigma.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         let mut found = false;
         for copy in distribution.nplus.iter() {
@@ -1183,7 +1172,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Poisson(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.get_nminus() + distribution.compute_nplus() == size as u64
     }
@@ -1200,14 +1189,14 @@ mod tests {
         distr1.sample(
             size,
             &SamplingStrategy::Poisson(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
 
         let mut distr2 = distribution.0;
         distr2.sample(
             size,
             &SamplingStrategy::Poisson(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
 
         distr1 == distr2
@@ -1233,7 +1222,7 @@ mod tests {
         distribution.sample(
             size as u64,
             &SamplingStrategy::Exponential(lambda.0),
-            &mut ChaCha8Rng::seed_from_u64(seed),
+            ChaCha8Rng::seed_from_u64(seed),
         );
         distribution.get_nminus() + distribution.compute_nplus() == size as u64
     }
@@ -1273,10 +1262,10 @@ mod tests {
         };
 
         let mut distr1 = distribution.0.clone();
-        distr1.sample(size, &sampling, &mut ChaCha8Rng::seed_from_u64(seed));
+        distr1.sample(size, &sampling, ChaCha8Rng::seed_from_u64(seed));
 
         let mut distr2 = distribution.0;
-        distr2.sample(size, &sampling, &mut ChaCha8Rng::seed_from_u64(seed));
+        distr2.sample(size, &sampling, ChaCha8Rng::seed_from_u64(seed));
 
         distr1 == distr2
     }
