@@ -1386,4 +1386,12 @@ mod tests {
     fn test_display(distribution: NonEmptyDistribtionWithNPlusCells) {
         println!("{}", distribution.0);
     }
+
+    #[test]
+    fn test_empty_distribution() {
+        let distribution = EcDNADistribution::from(vec![]);
+        assert!(distribution.is_empty());
+        assert_eq!(distribution.compute_nplus(), 0);
+        assert_eq!(distribution.get_nminus(), &0);
+    }
 }
