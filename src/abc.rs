@@ -1,6 +1,91 @@
+use anyhow::{ensure, Context};
+use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
+use std::{fs, path::Path};
+
 use derive_builder::Builder;
 
 use crate::distribution::EcDNADistribution;
+
+#[derive(Debug, Deserialize)]
+pub struct ABCResultFitness {
+    pub result: ABCResult,
+    pub rates: Vec<f32>,
+}
+
+impl Serialize for ABCResultFitness {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ABCResultFitness", 12)?;
+        state.serialize_field("idx", &self.result.idx)?;
+        state.serialize_field("mean", &self.result.mean)?;
+        state.serialize_field("mean_stat", &self.result.mean_stat)?;
+        state.serialize_field("frequency", &self.result.frequency)?;
+        state.serialize_field("frequency_stat", &self.result.frequency_stat)?;
+        state.serialize_field("entropy", &self.result.entropy)?;
+        state.serialize_field("entropy_stat", &self.result.entropy_stat)?;
+        state.serialize_field("ecdna_stat", &self.result.ecdna_stat)?;
+        state.serialize_field("pop_size", &self.result.pop_size)?;
+        state.serialize_field("b0", &self.rates[0])?;
+        state.serialize_field("b1", &self.rates[1])?;
+        if self.rates.len() > 2 {
+            state.serialize_field("d0", &self.rates[2])?;
+            state.serialize_field("d1", &self.rates[3])?;
+            if self.rates.len() > 4 {
+                unreachable!()
+            }
+        } else {
+            state.serialize_field("d0", &0f32)?;
+            state.serialize_field("d1", &0f32)?;
+        }
+
+        state.end()
+    }
+}
+
+pub struct ABCResultsFitness(pub Vec<ABCResultFitness>);
+
+impl ABCResultsFitness {
+    pub fn save(self, path2folder: &Path, verbosity: u8) -> anyhow::Result<()> {
+        fs::create_dir_all(path2folder).with_context(|| "Cannot create dir".to_string())?;
+
+        let mut abc = path2folder.join("abc");
+        abc.set_extension("csv");
+        if verbosity > 1 {
+            println!("Saving ABC results to {:#?}", abc);
+        }
+        let mut wtr = csv::Writer::from_path(abc)?;
+
+        for res in self.0 {
+            if verbosity > 0 {
+                println!(
+                    "Statistics of run {}: Mean: {}, Freq: {}, Entropy: {}",
+                    res.result.idx, res.result.mean, res.result.frequency, res.result.entropy
+                );
+            }
+            wtr.serialize(&res)
+                .with_context(|| "Cannot serialize the results from ABC inference".to_string())?;
+        }
+        wtr.flush()?;
+        Ok(())
+    }
+
+    pub fn from_csv(path2csv: &Path) -> anyhow::Result<Self> {
+        ensure!(path2csv.is_file());
+        ensure!(path2csv.extension().unwrap() == "csv");
+
+        let mut records: Vec<ABCResultFitness> = Vec::new();
+
+        let mut rdr = csv::Reader::from_path(path2csv)
+            .with_context(|| format!("cannot open csv file {:#?}", path2csv))?;
+        for result in rdr.deserialize() {
+            let record = result?;
+            records.push(record);
+        }
+        Ok(ABCResultsFitness(records))
+    }
+}
 
 /// The data used to perform ABC.
 #[derive(Debug)]
@@ -83,7 +168,7 @@ impl ABCRejection {
     }
 }
 
-#[derive(Builder, Debug)]
+#[derive(Builder, Debug, Deserialize)]
 pub struct ABCResult {
     pub idx: usize,
     pub mean: f32,

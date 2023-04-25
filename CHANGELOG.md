@@ -1,4 +1,8 @@
 # Changelog
+## v1.0.1
+### Added
+Add struct `ABCResultsFitness` that can be saved and loaded.
+
 ## v0.5.4
 ### Added
 Computation of the variance `EcDNADistribution::compute_variance`.
