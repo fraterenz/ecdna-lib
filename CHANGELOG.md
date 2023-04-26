@@ -1,4 +1,10 @@
 # Changelog
+
+## v2.0.0
+### Added
+`ABCRejection::run` take bool argument `drop_nminus` which set the `frequency_stat` to `f32::NAN`.
+Added new field `dropped_nminus` in the `ABCResult`.
+
 ## v1.0.1
 ### Added
 Add struct `ABCResultsFitness` that can be saved and loaded.

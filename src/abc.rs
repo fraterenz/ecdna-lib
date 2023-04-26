@@ -39,6 +39,7 @@ impl Serialize for ABCResultFitness {
             state.serialize_field("d0", &0f32)?;
             state.serialize_field("d1", &0f32)?;
         }
+        state.serialize_field("dropped_nminus", &self.result.dropped_nminus)?;
 
         state.end()
     }
@@ -113,6 +114,7 @@ impl ABCRejection {
         mut builder: ABCResultBuilder,
         distribution: &EcDNADistribution,
         target: &Data,
+        drop_nminus: bool,
         verbosity: u8,
     ) -> ABCResult {
         //! Run the ABC rejection method by comparing a ecDNA `distribution`
@@ -143,10 +145,13 @@ impl ABCRejection {
 
         let frequency = distribution.compute_frequency();
         builder.frequency(frequency);
-        let frequency_stat = target
-            .frequency
-            .as_ref()
-            .map(|target_frequency| relative_change(target_frequency, &frequency));
+        let frequency_stat = target.frequency.as_ref().map(|target_frequency| {
+            if !drop_nminus {
+                relative_change(target_frequency, &frequency)
+            } else {
+                f32::NAN
+            }
+        });
         builder.frequency_stat(frequency_stat);
 
         let entropy = distribution.compute_entropy();
@@ -163,6 +168,7 @@ impl ABCRejection {
                 builder.ecdna_stat, mean_stat, frequency_stat, entropy_stat
             );
         }
+        builder.dropped_nminus(drop_nminus);
 
         builder.build().expect("Cannot build ABC results")
     }
@@ -183,6 +189,7 @@ pub struct ABCResult {
     #[builder(default)]
     pub ecdna_stat: Option<f32>,
     pub pop_size: u64,
+    pub dropped_nminus: bool,
 }
 
 /// Relative change between two scalars
@@ -201,6 +208,7 @@ mod tests {
     #[quickcheck]
     fn abc_run_small_sample_with_nminus_target(
         distribution: NonEmptyDistribtionWithNPlusCells,
+        drop_nminus: bool,
     ) -> bool {
         let target_distr = EcDNADistribution::from(vec![1, 2, 0]);
         let mut builder = ABCResultBuilder::default();
@@ -211,12 +219,15 @@ mod tests {
             frequency: None,
             entropy: None,
         };
-        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
-        results.ecdna_stat.is_none()
+        let results = ABCRejection::run(builder, &distribution.0, &target, drop_nminus, 0);
+        results.ecdna_stat.is_none() && results.dropped_nminus == drop_nminus
     }
 
     #[quickcheck]
-    fn abc_run_small_sample_with_nminus(target_distr: NonEmptyDistribtionWithNPlusCells) -> bool {
+    fn abc_run_small_sample_with_nminus(
+        target_distr: NonEmptyDistribtionWithNPlusCells,
+        drop_nminus: bool,
+    ) -> bool {
         let distribution = EcDNADistribution::from(vec![1, 2, 0]);
         let mut builder = ABCResultBuilder::default();
         builder.idx(1);
@@ -226,12 +237,16 @@ mod tests {
             frequency: None,
             entropy: None,
         };
-        let results = ABCRejection::run(builder, &distribution, &target, 0);
-        results.ecdna_stat.is_none()
+        let results = ABCRejection::run(builder, &distribution, &target, drop_nminus, 0);
+        results.ecdna_stat.is_none() && results.dropped_nminus == drop_nminus
     }
 
     #[quickcheck]
-    fn abc_run_test(distribution: NonEmptyDistribtionWithNPlusCells, idx: usize) -> bool {
+    fn abc_run_test(
+        distribution: NonEmptyDistribtionWithNPlusCells,
+        idx: usize,
+        drop_nminus: bool,
+    ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
         let mean = distribution.0.compute_mean();
@@ -247,17 +262,24 @@ mod tests {
             entropy: Some(entropy),
         };
 
-        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
+        let results = ABCRejection::run(builder, &distribution.0, &target, drop_nminus, 0);
+        let freq_test = if !drop_nminus {
+            (results.frequency_stat.unwrap() - 0f32).abs() < f32::EPSILON
+        } else {
+            results.frequency_stat.unwrap().is_nan()
+        };
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && (results.mean_stat.unwrap() - 0f32).abs() < f32::EPSILON
-            && (results.frequency_stat.unwrap() - 0f32).abs() < f32::EPSILON
+            && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
+            && results.dropped_nminus == drop_nminus
     }
 
     #[quickcheck]
     fn abc_run_no_distribution_test(
         distribution: NonEmptyDistribtionWithNPlusCells,
         idx: usize,
+        drop_nminus: bool,
     ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
@@ -274,17 +296,24 @@ mod tests {
             entropy: Some(entropy),
         };
 
-        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
+        let results = ABCRejection::run(builder, &distribution.0, &target, drop_nminus, 0);
+        let freq_test = if !drop_nminus {
+            (results.frequency_stat.unwrap() - 0f32).abs() < f32::EPSILON
+        } else {
+            results.frequency_stat.unwrap().is_nan()
+        };
         results.ecdna_stat.is_none()
             && (results.mean_stat.unwrap() - 0f32).abs() < f32::EPSILON
-            && (results.frequency_stat.unwrap() - 0f32).abs() < f32::EPSILON
+            && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
+            && results.dropped_nminus == drop_nminus
     }
 
     #[quickcheck]
     fn abc_run_distribution_only_test(
         distribution: NonEmptyDistribtionWithNPlusCells,
         idx: usize,
+        drop_nminus: bool,
     ) -> bool {
         let mut builder = ABCResultBuilder::default();
         builder.idx(idx);
@@ -295,10 +324,11 @@ mod tests {
             entropy: None,
         };
 
-        let results = ABCRejection::run(builder, &distribution.0, &target, 0);
+        let results = ABCRejection::run(builder, &distribution.0, &target, drop_nminus, 0);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && results.mean_stat.is_none()
             && results.frequency_stat.is_none()
             && results.entropy_stat.is_none()
+            && results.dropped_nminus == drop_nminus
     }
 }
