@@ -1,6 +1,6 @@
 [package]
 name = "ecdna-lib"
-version = "2.0.0"
+version = "2.0.1"
 edition = "2021"
 repository = "https://github.com/fraterenz/ecdna-lib"
 description = "The ecDNA distribution for the evolutionary of extra-chromosomal DNA (ecDNA)"
@@ -10,6 +10,7 @@ license = "Apache-2.0 OR MIT"
 anyhow = "1.0"
 csv = "1.1"
 derive_builder = "0.12"
+hdrhistogram = "7.5.2"
 rand = { version = "0.8.5", features = ["small_rng"] }
 rand_chacha = "0.3.1"
 rand_distr = "0.4.0"

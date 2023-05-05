@@ -1,4 +1,7 @@
 # Changelog
+## v2.0.1
+### Added
+New field `k_max` in `ABCResult`: `hdrhistogram` to compute histogram for abc in order to get the mean ecDNA and the quantile for the max ecDNA copy number.
 
 ## v2.0.0
 ### Added

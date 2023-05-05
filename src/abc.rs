@@ -1,4 +1,5 @@
 use anyhow::{ensure, Context};
+use hdrhistogram::Histogram;
 use serde::{ser::SerializeStruct, Deserialize, Serialize, Serializer};
 use std::{fs, path::Path};
 
@@ -135,14 +136,6 @@ impl ABCRejection {
             }
         };
 
-        let mean = distribution.compute_mean();
-        builder.mean(mean);
-        let mean_stat = target
-            .mean
-            .as_ref()
-            .map(|target_mean| relative_change(target_mean, &mean));
-        builder.mean_stat(mean_stat);
-
         let frequency = distribution.compute_frequency();
         builder.frequency(frequency);
         let frequency_stat = target.frequency.as_ref().map(|target_frequency| {
@@ -162,10 +155,45 @@ impl ABCRejection {
             .map(|target_entropy| relative_change(target_entropy, &entropy));
         builder.entropy_stat(entropy_stat);
 
+        let k_upper_bound = 4000;
+        let mut hist = Histogram::<u64>::new_with_max(k_upper_bound, 2).unwrap();
+        for (ecdna, nb_cells) in distribution.create_histogram().into_iter() {
+            hist.record_n(ecdna as u64, nb_cells)
+                .expect("should be in range");
+        }
+
+        let mean = hist.mean() as f32;
+        builder.mean(mean);
+        let mean_stat = target
+            .mean
+            .as_ref()
+            .map(|target_mean| relative_change(target_mean, &mean));
+        builder.mean_stat(mean_stat);
+
+        if let Some(target_distribution) = target.distribution.as_ref() {
+            let quantile = 0.9;
+
+            let mut hist_target = Histogram::<u64>::new_with_max(k_upper_bound, 2).unwrap();
+            for (ecdna, nb_cells) in target_distribution.create_histogram().into_iter() {
+                hist_target
+                    .record_n(ecdna as u64, nb_cells)
+                    .expect("should be in range");
+            }
+
+            builder.k_max(Some(relative_change(
+                &(hist_target.value_at_quantile(quantile) as f32),
+                &(hist.value_at_quantile(quantile) as f32),
+            )));
+        }
+
         if verbosity > 0 {
             println!(
-                "The stats are: ks:{:#?}, mean: {:#?}, freq: {:#?}, entropy: {:#?}",
-                builder.ecdna_stat, mean_stat, frequency_stat, entropy_stat
+                "The stats are: ks:{:#?}, mean: {:#?}, freq: {:#?}, entropy: {:#?}, k_max: {:#?}",
+                builder.ecdna_stat.unwrap_or(None),
+                mean_stat,
+                frequency_stat,
+                entropy_stat,
+                builder.k_max.unwrap_or(None)
             );
         }
         builder.dropped_nminus(drop_nminus);
@@ -188,6 +216,8 @@ pub struct ABCResult {
     pub entropy_stat: Option<f32>,
     #[builder(default)]
     pub ecdna_stat: Option<f32>,
+    #[builder(default)]
+    pub k_max: Option<f32>,
     pub pop_size: u64,
     pub dropped_nminus: bool,
 }
@@ -268,11 +298,13 @@ mod tests {
         } else {
             results.frequency_stat.unwrap().is_nan()
         };
+        dbg!(&results.k_max);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && (results.mean_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
             && results.dropped_nminus == drop_nminus
+            && (results.k_max.unwrap() - 0f32).abs() < f32::EPSILON
     }
 
     #[quickcheck]
@@ -307,6 +339,7 @@ mod tests {
             && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
             && results.dropped_nminus == drop_nminus
+            && results.k_max.is_none()
     }
 
     #[quickcheck]
