@@ -180,7 +180,7 @@ impl ABCRejection {
                     .expect("should be in range");
             }
 
-            builder.k_max(Some(relative_change(
+            builder.kmax_stat(Some(relative_change(
                 &(hist_target.value_at_quantile(quantile) as f32),
                 &(hist.value_at_quantile(quantile) as f32),
             )));
@@ -193,7 +193,7 @@ impl ABCRejection {
                 mean_stat,
                 frequency_stat,
                 entropy_stat,
-                builder.k_max.unwrap_or(None)
+                builder.kmax_stat.unwrap_or(None)
             );
         }
         builder.dropped_nminus(drop_nminus);
@@ -217,7 +217,7 @@ pub struct ABCResult {
     #[builder(default)]
     pub ecdna_stat: Option<f32>,
     #[builder(default)]
-    pub k_max: Option<f32>,
+    pub kmax_stat: Option<f32>,
     pub pop_size: u64,
     pub dropped_nminus: bool,
 }
@@ -298,13 +298,13 @@ mod tests {
         } else {
             results.frequency_stat.unwrap().is_nan()
         };
-        dbg!(&results.k_max);
+        dbg!(&results.kmax_stat);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && (results.mean_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
             && results.dropped_nminus == drop_nminus
-            && (results.k_max.unwrap() - 0f32).abs() < f32::EPSILON
+            && (results.kmax_stat.unwrap() - 0f32).abs() < f32::EPSILON
     }
 
     #[quickcheck]
@@ -339,7 +339,7 @@ mod tests {
             && freq_test
             && (results.entropy_stat.unwrap() - 0f32).abs() < 10f32 * f32::EPSILON
             && results.dropped_nminus == drop_nminus
-            && results.k_max.is_none()
+            && results.kmax_stat.is_none()
     }
 
     #[quickcheck]
