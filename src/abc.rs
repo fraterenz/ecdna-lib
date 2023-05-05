@@ -27,6 +27,7 @@ impl Serialize for ABCResultFitness {
         state.serialize_field("entropy", &self.result.entropy)?;
         state.serialize_field("entropy_stat", &self.result.entropy_stat)?;
         state.serialize_field("ecdna_stat", &self.result.ecdna_stat)?;
+        state.serialize_field("kmax_stat", &self.result.kmax_stat)?;
         state.serialize_field("pop_size", &self.result.pop_size)?;
         state.serialize_field("b0", &self.rates[0])?;
         state.serialize_field("b1", &self.rates[1])?;

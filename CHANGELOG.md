@@ -1,4 +1,7 @@
 # Changelog
+## v2.0.3
+Serialise field `kmax_stat` in `ABCResult` with `serde`.
+
 ## v2.0.2
 Rename field `k_max` in `ABCResult` to `kmax_stat`.
 
