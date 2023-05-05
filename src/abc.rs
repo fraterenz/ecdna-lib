@@ -172,7 +172,7 @@ impl ABCRejection {
         builder.mean_stat(mean_stat);
 
         if let Some(target_distribution) = target.distribution.as_ref() {
-            let quantile = 0.9;
+            let quantile = 0.999;
 
             let mut hist_target = Histogram::<u64>::new_with_max(k_upper_bound, 2).unwrap();
             for (ecdna, nb_cells) in target_distribution.create_histogram().into_iter() {

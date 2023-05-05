@@ -1,4 +1,7 @@
 # Changelog
+## v2.0.4
+Increase quantile for `kmax_stat` to `0.999`.
+
 ## v2.0.3
 Serialise field `kmax_stat` in `ABCResult` with `serde`.
 
