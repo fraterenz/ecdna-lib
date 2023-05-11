@@ -1,4 +1,7 @@
 # Changelog
+## v2.0.6
+Store in the abc results `kmax`.
+
 ## v2.0.5
 Compute the quantile using `ABCRejection::compute_quantile_to_get_10_cells` for the `k_max` stat.
 

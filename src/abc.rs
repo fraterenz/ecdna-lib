@@ -27,6 +27,7 @@ impl Serialize for ABCResultFitness {
         state.serialize_field("entropy", &self.result.entropy)?;
         state.serialize_field("entropy_stat", &self.result.entropy_stat)?;
         state.serialize_field("ecdna_stat", &self.result.ecdna_stat)?;
+        state.serialize_field("kmax", &self.result.kmax)?;
         state.serialize_field("kmax_stat", &self.result.kmax_stat)?;
         state.serialize_field("pop_size", &self.result.pop_size)?;
         state.serialize_field("b0", &self.rates[0])?;
@@ -187,13 +188,17 @@ impl ABCRejection {
                     .record_n(ecdna as u64, nb_cells)
                     .expect("should be in range");
             }
-
             // else it means no cells left
-            if let (Some(q_target), Some(q)) = (quantile_target, quantile) {
-                builder.kmax_stat(Some(relative_change(
-                    &(hist_target.value_at_quantile(q_target) as f32),
-                    &(hist.value_at_quantile(q) as f32),
-                )));
+            if let Some(q) = quantile {
+                let value_at_q = hist.value_at_quantile(q) as u16;
+                builder.kmax(Some(value_at_q));
+
+                if let Some(q_target) = quantile_target {
+                    builder.kmax_stat(Some(relative_change(
+                        &(hist_target.value_at_quantile(q_target) as f32),
+                        &(value_at_q as f32),
+                    )));
+                }
             }
         }
 
@@ -239,6 +244,8 @@ pub struct ABCResult {
     pub entropy_stat: Option<f32>,
     #[builder(default)]
     pub ecdna_stat: Option<f32>,
+    #[builder(default)]
+    pub kmax: Option<u16>,
     #[builder(default)]
     pub kmax_stat: Option<f32>,
     pub pop_size: u64,
