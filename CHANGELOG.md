@@ -1,4 +1,7 @@
 # Changelog
+## v2.0.5
+Compute the quantile using `ABCRejection::compute_quantile_to_get_10_cells` for the `k_max` stat.
+
 ## v2.0.4
 Increase quantile for `kmax_stat` to `0.999`.
 

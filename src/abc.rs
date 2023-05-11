@@ -172,7 +172,14 @@ impl ABCRejection {
         builder.mean_stat(mean_stat);
 
         if let Some(target_distribution) = target.distribution.as_ref() {
-            let quantile = 0.999;
+            // take the quantile such that there are 10 cells in the quantile
+            let quantile_target = Self::compute_quantile_to_get_10_cells(
+                *target_distribution.get_nminus() + target_distribution.compute_nplus(),
+            );
+            // different quantiles because we dont assume same population size
+            let quantile = Self::compute_quantile_to_get_10_cells(
+                *distribution.get_nminus() + distribution.compute_nplus(),
+            );
 
             let mut hist_target = Histogram::<u64>::new_with_max(k_upper_bound, 2).unwrap();
             for (ecdna, nb_cells) in target_distribution.create_histogram().into_iter() {
@@ -181,10 +188,13 @@ impl ABCRejection {
                     .expect("should be in range");
             }
 
-            builder.kmax_stat(Some(relative_change(
-                &(hist_target.value_at_quantile(quantile) as f32),
-                &(hist.value_at_quantile(quantile) as f32),
-            )));
+            // else it means no cells left
+            if let (Some(q_target), Some(q)) = (quantile_target, quantile) {
+                builder.kmax_stat(Some(relative_change(
+                    &(hist_target.value_at_quantile(q_target) as f32),
+                    &(hist.value_at_quantile(q) as f32),
+                )));
+            }
         }
 
         if verbosity > 0 {
@@ -200,6 +210,18 @@ impl ABCRejection {
         builder.dropped_nminus(drop_nminus);
 
         builder.build().expect("Cannot build ABC results")
+    }
+
+    fn compute_quantile_to_get_10_cells(nb_cells: u64) -> Option<f64> {
+        //! Returns `None` if `nb_cells` is 0;
+        //! returns 0.999 if `nb_cells` <= `10`;
+        //! else returns Some 1 - 10/`nb_cells`.
+        if nb_cells == 0u64 {
+            return None;
+        } else if nb_cells <= 10 {
+            return Some(0.999);
+        }
+        Some(1. - 10f64 / (nb_cells as f64))
     }
 }
 
@@ -299,7 +321,6 @@ mod tests {
         } else {
             results.frequency_stat.unwrap().is_nan()
         };
-        dbg!(&results.kmax_stat);
         (results.ecdna_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && (results.mean_stat.unwrap() - 0f32).abs() < f32::EPSILON
             && freq_test
@@ -364,5 +385,33 @@ mod tests {
             && results.frequency_stat.is_none()
             && results.entropy_stat.is_none()
             && results.dropped_nminus == drop_nminus
+    }
+
+    #[quickcheck]
+    fn compute_quantile_to_get_10_cells_test_overflow(nb_cells: u64) -> bool {
+        let res = ABCRejection::compute_quantile_to_get_10_cells(nb_cells);
+        if nb_cells == 0 {
+            res.is_none()
+        } else {
+            res.unwrap().is_normal()
+        }
+    }
+
+    #[test]
+    fn compute_quantile_to_get_10_cells_test() {
+        assert!(
+            (ABCRejection::compute_quantile_to_get_10_cells(10).unwrap() - 0.999).abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (ABCRejection::compute_quantile_to_get_10_cells(100).unwrap() - (1. - 0.1f64)).abs()
+                < f64::EPSILON
+        );
+        assert!(
+            (ABCRejection::compute_quantile_to_get_10_cells(1_000_000).unwrap()
+                - (1. - (1f64 / 100_000f64)))
+                .abs()
+                < f64::EPSILON
+        );
     }
 }
