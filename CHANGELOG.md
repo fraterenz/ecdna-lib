@@ -1,4 +1,7 @@
 # Changelog
+## v3.0.0
+Do not consume the `rng` when subsampling and use a mutable reference instead (we have lost reproducibility in subsampling though).
+
 ## v2.0.6
 Store in the abc results `kmax`.
 
