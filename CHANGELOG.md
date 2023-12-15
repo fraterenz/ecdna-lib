@@ -1,4 +1,7 @@
 # Changelog
+## v3.0.1
+- new method `into_subsampled` which returns a new ecDNA distribution without modifying the original one.
+
 ## v3.0.0
 Do not consume the `rng` when subsampling and use a mutable reference instead (we have lost reproducibility in subsampling though).
 
