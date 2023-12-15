@@ -225,7 +225,7 @@ impl EcDNADistribution {
         Ok(())
     }
 
-    pub fn into_subsampled<R: Rng>(&mut self, nb_cells: u64, rng: &mut R) -> EcDNADistribution {
+    pub fn into_subsampled<R: Rng>(&self, nb_cells: u64, rng: &mut R) -> EcDNADistribution {
         self.undersample(nb_cells, rng)
     }
 

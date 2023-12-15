@@ -1,4 +1,7 @@
 # Changelog
+## v3.0.2
+- do not take mutable reference when subsampling with `into_subsampled`.
+
 ## v3.0.1
 - new method `into_subsampled` which returns a new ecDNA distribution without modifying the original one.
 
